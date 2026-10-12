@@ -50,6 +50,7 @@ void LoadSettings() {
     if (g_replayGainPreamp > 15.0f) g_replayGainPreamp = 15.0f;
     g_replayGainPreventClip = IniGetInt(L"Playback", L"ReplayGainPreventClip", 1, g_configPath.c_str()) != 0;
     g_showTitleInWindow = IniGetInt(L"Playback", L"ShowTitleInWindow", 1, g_configPath.c_str()) != 0;
+    g_showChapterInTitle = IniGetInt(L"Playback", L"ShowChapterInTitle", 0, g_configPath.c_str()) != 0;
     g_volume = IniGetInt(L"Playback", L"Volume", 100, g_configPath.c_str()) / 100.0f;
 
     // Clamp volume
@@ -447,6 +448,7 @@ void SaveSettings() {
     swprintf(buf, 32, L"%d", static_cast<int>(g_volumeStep * 100 + 0.5f));
     IniWriteString(L"Playback", L"VolumeStep", buf, g_configPath.c_str());
     IniWriteString(L"Playback", L"ShowTitleInWindow", g_showTitleInWindow ? L"1" : L"0", g_configPath.c_str());
+    IniWriteString(L"Playback", L"ShowChapterInTitle", g_showChapterInTitle ? L"1" : L"0", g_configPath.c_str());
 
     swprintf(buf, 32, L"%d", g_replayGainMode);
     IniWriteString(L"Playback", L"ReplayGainMode", buf, g_configPath.c_str());

@@ -700,10 +700,19 @@ int GetCurrentChapterIndex() {
     return currentChapter;
 }
 
+static std::wstring ChapterTitle(size_t index) {
+    const Chapter& ch = g_chapters[index];
+    return ch.name.empty() ? L"Chapter " + std::to_wstring(index + 1) : ch.name;
+}
+
+std::wstring GetCurrentChapterTitle() {
+    int index = GetCurrentChapterIndex();
+    return index < 0 ? std::wstring() : ChapterTitle(static_cast<size_t>(index));
+}
+
 // Say which chapter this is: its title, or its number if it has none
 static void SpeakChapter(size_t index) {
-    const Chapter& ch = g_chapters[index];
-    Speak(ch.name.empty() ? "Chapter " + std::to_string(index + 1) : WideToUtf8(ch.name));
+    Speak(WideToUtf8(ChapterTitle(index)));
 }
 
 // Seek to next chapter (returns true if successful)

@@ -53,6 +53,8 @@ double GetCurrentLength();  // 0 for a live stream
 bool SeekToNextChapter();
 bool SeekToPrevChapter();
 int GetCurrentChapterIndex();
+// The chapter playing: its title, or "Chapter 3" if it has none. "" with no chapters.
+std::wstring GetCurrentChapterTitle();
 
 // Volume
 void SetVolume(float vol);

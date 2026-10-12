@@ -141,6 +141,7 @@ private:
     wxCheckBox* m_loadFolder = nullptr;
     wxCheckBox* m_minimizeToTray = nullptr;
     wxCheckBox* m_showTitle = nullptr;
+    wxCheckBox* m_showChapter = nullptr;
     wxCheckBox* m_autoAdvance = nullptr;
     wxCheckBox* m_playlistFollow = nullptr;
     wxCheckBox* m_checkUpdates = nullptr;
@@ -378,6 +379,8 @@ void OptionsDialog::BuildPlaybackPage(wxNotebook* book) {
     m_loadFolder = AddCheck(page, sizer, "&Load all files in folder when opening single file", g_loadFolder);
     m_minimizeToTray = AddCheck(page, sizer, "&Minimize to system tray", g_minimizeToTray);
     m_showTitle = AddCheck(page, sizer, "Show &track name in window title", g_showTitleInWindow);
+    m_showChapter = AddCheck(page, sizer, "Show c&hapter title in window title (if the file has chapters)",
+                             g_showChapterInTitle);
     m_autoAdvance = AddCheck(page, sizer, "Auto-ad&vance to next playlist item", g_autoAdvance);
     m_playlistFollow = AddCheck(page, sizer, "&Follow playback in playlist dialog", g_playlistFollowPlayback);
     m_checkUpdates = AddCheck(page, sizer, "Check for &updates on startup", g_checkForUpdates);
@@ -1024,6 +1027,7 @@ void OptionsDialog::OnOK(wxCommandEvent&) {
     g_loadFolder = m_loadFolder->GetValue();
     g_minimizeToTray = m_minimizeToTray->GetValue();
     g_showTitleInWindow = m_showTitle->GetValue();
+    g_showChapterInTitle = m_showChapter->GetValue();
     g_autoAdvance = m_autoAdvance->GetValue();
     g_playlistFollowPlayback = m_playlistFollow->GetValue();
     g_checkForUpdates = m_checkUpdates->GetValue();

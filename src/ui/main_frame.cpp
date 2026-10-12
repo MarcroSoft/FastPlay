@@ -869,6 +869,11 @@ void MainFrame::UpdateTitle() {
     if (g_showTitleInWindow && haveTrack) {
         title += L" - " + trackTitle;
     }
+    // The chapter playing, kept up to date as playback moves through them (UpdateStatus)
+    m_titleChapter = g_showChapterInTitle && haveTrack && audio::IsLoaded() ? GetCurrentChapterTitle() : L"";
+    if (!m_titleChapter.empty()) {
+        title += L" - " + m_titleChapter;
+    }
 #ifdef __WXOSX__
     m_nowPlayingTitle = trackTitle;
 #endif
@@ -888,6 +893,9 @@ void MainFrame::UpdateStatus() {
         double pos = audio::Position(), len = audio::Length();
         if (len > 0) {
             posText = FormatTime(pos) + L" / " + FormatTime(len);
+        }
+        if (g_showChapterInTitle && GetCurrentChapterTitle() != m_titleChapter) {
+            UpdateTitle();
         }
 #ifdef __WXOSX__
         UpdateNowPlaying(m_nowPlayingTitle, len, pos, IsPlaying());

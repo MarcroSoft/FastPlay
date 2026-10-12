@@ -418,6 +418,11 @@ void MoveSettingsToThisContainer() {
     return artist == L"No artist" ? @"" : ToNS(artist);
 }
 
+- (NSString*)chapterTitle {
+    if (!audio::IsLoaded()) return @"";
+    return ToNS(GetCurrentChapterTitle());
+}
+
 - (NSString*)statusText {
     if (!audio::IsLoaded()) return @"";
     std::wstring text;

@@ -26,6 +26,7 @@ final class PlayerViewController: UIViewController {
 
     private let titleLabel = UILabel()
     private let artistLabel = UILabel()
+    private let chapterLabel = UILabel()
     private let statusLabel = UILabel()
     private let positionSlider = UISlider()
     private let elapsedLabel = UILabel()
@@ -81,9 +82,12 @@ final class PlayerViewController: UIViewController {
         titleLabel.accessibilityTraits = .header
         artistLabel.font = .preferredFont(forTextStyle: .body)
         artistLabel.textColor = .secondaryLabel
+        chapterLabel.font = .preferredFont(forTextStyle: .subheadline)
+        chapterLabel.textColor = .secondaryLabel
+        chapterLabel.numberOfLines = 2
         statusLabel.font = .preferredFont(forTextStyle: .footnote)
         statusLabel.textColor = .secondaryLabel
-        for label in [titleLabel, artistLabel, statusLabel] {
+        for label in [titleLabel, artistLabel, chapterLabel, statusLabel] {
             label.textAlignment = .center
             label.adjustsFontForContentSizeCategory = true
         }
@@ -155,13 +159,14 @@ final class PlayerViewController: UIViewController {
         touchView.setContentHuggingPriority(.defaultLow - 1, for: .vertical)
 
         let stack = UIStackView(arrangedSubviews: [
-            titleLabel, artistLabel, statusLabel, positionSlider, times, transport, recordButton, modeControl,
+            titleLabel, artistLabel, chapterLabel, statusLabel, positionSlider, times, transport, recordButton, modeControl,
             slidersStack, seekModeButton, touchView,
         ])
         stack.axis = .vertical
         stack.spacing = 10
         stack.setCustomSpacing(2, after: titleLabel)
         stack.setCustomSpacing(2, after: artistLabel)
+        stack.setCustomSpacing(2, after: chapterLabel)
         stack.setCustomSpacing(2, after: positionSlider)
         stack.setCustomSpacing(4, after: transport)
         stack.setCustomSpacing(12, after: recordButton)
@@ -310,6 +315,7 @@ final class PlayerViewController: UIViewController {
         artistLabel.isHidden = artist.isEmpty || engine.title.localizedCaseInsensitiveContains(artist)
         statusLabel.text = engine.statusText
         statusLabel.isHidden = engine.statusText.isEmpty
+        refreshChapter()
 
         let playing = engine.playing
         let size = UIImage.SymbolConfiguration(textStyle: .largeTitle)
@@ -341,7 +347,17 @@ final class PlayerViewController: UIViewController {
         refreshPosition()
     }
 
+    /// The chapter playing, under the title; hidden for a file without chapters.
+    private func refreshChapter() {
+        let chapter = engine.chapterTitle
+        guard chapterLabel.text != chapter else { return }
+        chapterLabel.text = chapter
+        chapterLabel.accessibilityLabel = chapter.isEmpty ? nil : "Chapter: \(chapter)"
+        chapterLabel.isHidden = chapter.isEmpty
+    }
+
     private func refreshPosition() {
+        refreshChapter()
         let length = engine.length
         let position = engine.position
         let seekable = engine.loaded && length > 0

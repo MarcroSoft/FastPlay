@@ -91,6 +91,8 @@ typedef NS_ENUM(NSInteger, FPSeekMode) {
 // What is playing, or "" with nothing loaded.
 @property (nonatomic, readonly, copy) NSString* title;
 @property (nonatomic, readonly, copy) NSString* artist;
+// The chapter playing ("" if the file has none).
+@property (nonatomic, readonly, copy) NSString* chapterTitle;
 // "Playing | 128 kbps"
 @property (nonatomic, readonly, copy) NSString* statusText;
 + (NSString*)formatTime:(double)seconds;
