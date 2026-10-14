@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Where MainActivity shows the screen in front -->
+    <item name="screen" type="id" />
+</resources>

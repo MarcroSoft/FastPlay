@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Light or dark with the system, as the iPhone app is -->
+    <style name="Theme.FastPlay" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/accent</item>
+        <item name="android:navigationBarColor">?android:attr/colorBackground</item>
+    </style>
+</resources>

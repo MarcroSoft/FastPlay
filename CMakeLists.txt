@@ -23,6 +23,21 @@ else()
     set(FASTPLAY_IOS OFF)
 endif()
 
+# Android: as on the iPhone, FastPlay without its windows, as a static library
+# (FastPlayCore) that the app in android/ links into its JNI library, which also
+# provides what the core asks of the system there (paths, speech, HTTP, app_ui.h).
+if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    set(FASTPLAY_ANDROID ON)
+else()
+    set(FASTPLAY_ANDROID OFF)
+endif()
+# The phones: no wxWidgets, no windows of FastPlay's own
+if(FASTPLAY_IOS OR FASTPLAY_ANDROID)
+    set(FASTPLAY_MOBILE ON)
+else()
+    set(FASTPLAY_MOBILE OFF)
+endif()
+
 # ---------------------------------------------------------------------------
 # Toolchain
 # ---------------------------------------------------------------------------
@@ -63,7 +78,7 @@ set(CMAKE_SKIP_INSTALL_RULES ON)
 # screen reader fixes made since 3.3.3, most of them for VoiceOver on macOS
 # (controls titled by their labels, context menus, custom list cells) and some
 # for Windows. Move to the next 3.3 release tag once it has them.
-if(NOT FASTPLAY_IOS AND NOT FASTPLAY_ENGINE_LIBRARY)
+if(NOT FASTPLAY_MOBILE AND NOT FASTPLAY_ENGINE_LIBRARY)
 FetchContent_Declare(wxWidgets
     GIT_REPOSITORY https://github.com/wxWidgets/wxWidgets.git
     GIT_TAG 776a9a278791fe0d1c79be337e55ab8e53f89587
@@ -247,6 +262,8 @@ endif()
 # download-deps (deps/); SQLite's amalgamation is src/sqlite3.c.
 if(FASTPLAY_IOS)
     set(FASTPLAY_FFMPEG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg-ios)  # ci/ffmpeg/build.sh ios ffmpeg-ios
+elseif(FASTPLAY_ANDROID)
+    set(FASTPLAY_FFMPEG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg-android)  # ci/ffmpeg/build.sh android ffmpeg-android
 else()
     set(FASTPLAY_FFMPEG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg)
 endif()
@@ -319,8 +336,8 @@ set(FASTPLAY_SOURCES
     deps/kissfft/kiss_fft.c
 )
 
-# The windows (wxWidgets), everywhere but the iPhone
-if(NOT FASTPLAY_IOS)
+# The windows (wxWidgets), everywhere but the phones
+if(NOT FASTPLAY_MOBILE)
     list(APPEND FASTPLAY_SOURCES
         src/ui/app.cpp
         src/ui/bookmarks_dialog.cpp
@@ -370,6 +387,15 @@ elseif(FASTPLAY_IOS)
         src/platform/updater_unsupported.cpp
         src/platform/folder_watch_none.cpp
     )
+elseif(FASTPLAY_ANDROID)
+    # The same, and the rest (HTTP, paths, speech, startup) is the app's JNI
+    # library's, in android/app/src/main/cpp
+    list(APPEND FASTPLAY_SOURCES
+        src/platform/ini_portable.cpp
+        src/platform/subprocess_none.cpp
+        src/platform/updater_unsupported.cpp
+        src/platform/folder_watch_none.cpp
+    )
 else()
     list(APPEND FASTPLAY_SOURCES
         src/platform/http_curl.cpp
@@ -389,7 +415,7 @@ if(APPLE AND NOT FASTPLAY_IOS)
         src/platform/updater_mac.cpp
         src/platform/folder_watch_mac.cpp
     )
-elseif(NOT WIN32 AND NOT FASTPLAY_IOS)
+elseif(NOT WIN32 AND NOT FASTPLAY_MOBILE)
     list(APPEND FASTPLAY_SOURCES src/platform/updater_unsupported.cpp src/platform/folder_watch_none.cpp)
 endif()
 
@@ -400,6 +426,19 @@ if(FASTPLAY_IOS)
     set_source_files_properties(src/audio/miniaudio.c PROPERTIES LANGUAGE OBJC)
     set_source_files_properties(src/platform/http_ios.mm src/platform/paths_ios.mm src/platform/speech_ios.mm
         src/platform/startup_ios.mm src/platform/now_playing_apple.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+elseif(FASTPLAY_ANDROID)
+    add_library(FastPlay STATIC ${FASTPLAY_SOURCES})
+    set_target_properties(FastPlay PROPERTIES OUTPUT_NAME FastPlayCore)
+    # What the app's JNI library builds against: FastPlay's headers, and FFmpeg's
+    # libraries for its ABI with mbed TLS (HTTPS) and what they use of Android
+    set(FASTPLAY_FFMPEG_LIB ${FASTPLAY_FFMPEG_DIR}/lib/${ANDROID_ABI})
+    target_include_directories(FastPlay INTERFACE src src/audio include include/fastplay ${FASTPLAY_FFMPEG_DIR}/include)
+    target_link_libraries(FastPlay PUBLIC
+        ${FASTPLAY_FFMPEG_LIB}/libavformat.a ${FASTPLAY_FFMPEG_LIB}/libavcodec.a
+        ${FASTPLAY_FFMPEG_LIB}/libswresample.a ${FASTPLAY_FFMPEG_LIB}/libavutil.a
+        ${FASTPLAY_FFMPEG_LIB}/libmbedtls.a ${FASTPLAY_FFMPEG_LIB}/libmbedx509.a
+        ${FASTPLAY_FFMPEG_LIB}/libmbedcrypto.a
+        z dl log)
 else()
     add_executable(FastPlay WIN32 MACOSX_BUNDLE ${FASTPLAY_SOURCES})
 endif()
@@ -447,7 +486,7 @@ if(FASTPLAY_BUILD_COMMIT)
     target_compile_definitions(FastPlay PRIVATE BUILD_COMMIT="${FASTPLAY_BUILD_COMMIT}")
 endif()
 
-if(NOT FASTPLAY_IOS)
+if(NOT FASTPLAY_MOBILE)
     target_link_libraries(FastPlay PRIVATE wx::core wx::base wx::adv wx::net)
     if(NOT WIN32)
         find_package(CURL REQUIRED)
