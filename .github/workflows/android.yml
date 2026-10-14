@@ -1,0 +1,64 @@
+name: Android
+
+# The Android app (android/): FastPlay's engine built with the NDK, its windows
+# in Kotlin. Every push to master that changes it, or the engine it is built on,
+# builds the APK and puts it on the "latest" release as FastPlay.apk.
+#
+# Signing needs these repository secrets: ANDROID_KEYSTORE_B64 (the release
+# keystore, base64), ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and
+# ANDROID_KEY_PASSWORD. Without them the APK is signed with a debug key, built
+# but not released.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'android/**'
+      - 'src/**'
+      - 'include/**'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
+      - 'ci/ffmpeg/**'
+      - 'download-deps.sh'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install the NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.3.13750724" "cmake;3.31.6" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.3.13750724" >> "$GITHUB_ENV"
+
+      # FastPlay's audio-only FFmpeg for Android, built again only when its build
+      # or patches change. Uploaded for local builds.
+      - name: Cache FFmpeg
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: ffmpeg-android
+          key: ffmpeg-android-${{ hashFiles('ci/ffmpeg/**') }}
+
+      - name: Build FFmpeg
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: JOBS="$(nproc)" bash ci/ffmpeg/build.sh android ffmpeg-android
+
+      - name: Upload FFmpeg
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-android
+          path: ffmpeg-android

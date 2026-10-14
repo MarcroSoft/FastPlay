@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # Build FastPlay's FFmpeg: audio only (the demuxers, decoders and parsers of the
 # formats FastPlay plays, the network protocols for streams, and the FLAC encoder
-# for recording), as static libraries, with no outside libraries. LGPL. Our
-# few changes to FFmpeg are in ci/ffmpeg/patches.
+# for recording), as static libraries, with no outside libraries but Android's
+# TLS (see below). LGPL. Our few changes to FFmpeg are in ci/ffmpeg/patches.
 #
 #   ci/ffmpeg/build.sh windows <out-dir>   (in MSYS2, with the MSVC tools on PATH)
 #   ci/ffmpeg/build.sh macos <out-dir>     (a universal arm64 + x86_64 build)
 #   ci/ffmpeg/build.sh ios <out-dir>       (iPhone arm64, and the simulator for both Macs)
+#   ci/ffmpeg/build.sh android <out-dir>   (phones' arm64-v8a and the emulator's x86_64;
+#                                           ANDROID_NDK_HOME names the NDK)
 #
 # <out-dir> receives include/, lib/ and BUILDINFO.txt. The version to build is in
 # ci/ffmpeg/VERSION (an FFmpeg tag). The iOS build's libraries are in lib/iphoneos
-# and lib/iphonesimulator, as Xcode names the two.
+# and lib/iphonesimulator, as Xcode names the two; Android's in lib/<ABI>, as
+# Gradle names them.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -160,8 +163,52 @@ case "$platform" in
                 -output "$out/lib/iphonesimulator/$base"
         done
         ;;
+    android)
+        # Android has no system TLS that C code can use, so HTTPS is mbed TLS,
+        # built here with FFmpeg (Apache 2.0, which makes this FFmpeg LGPL v3: hence
+        # --enable-version3). FTP as well, as on the iPhone.
+        ndk="${ANDROID_NDK_HOME:?set ANDROID_NDK_HOME to the NDK}"
+        api=26  # the app's minSdk
+        host="$(uname -s | tr '[:upper:]' '[:lower:]')-x86_64"
+        bin="$ndk/toolchains/llvm/prebuilt/$host/bin"
+        mbedtls_version="$(tr -d ' \r\n' < "$here/MBEDTLS_VERSION")"
+        if [ ! -d "$work/mbedtls" ]; then
+            git clone --depth 1 --branch "$mbedtls_version" --recurse-submodules --shallow-submodules \
+                https://github.com/Mbed-TLS/mbedtls.git "$work/mbedtls"
+        fi
+        android_slice() {
+            local abi="$1" arch="$2" triple="$3"
+            shift 3
+            local tls="$work/mbedtls-$abi"
+            rm -rf "$work/mbedtls-build-$abi"
+            cmake -S "$work/mbedtls" -B "$work/mbedtls-build-$abi" \
+                -DCMAKE_TOOLCHAIN_FILE="$ndk/build/cmake/android.toolchain.cmake" \
+                -DANDROID_ABI="$abi" -DANDROID_PLATFORM="android-$api" \
+                -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$tls" \
+                -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+                -DENABLE_PROGRAMS=OFF -DENABLE_TESTING=OFF \
+                -DUSE_SHARED_MBEDTLS_LIBRARY=OFF -DUSE_STATIC_MBEDTLS_LIBRARY=ON
+            cmake --build "$work/mbedtls-build-$abi" --parallel "${JOBS:-4}"
+            cmake --install "$work/mbedtls-build-$abi"
+            build_one "android-$abi" "$work/install-android-$abi" \
+                --enable-cross-compile --target-os=android --arch="$arch" \
+                --cc="$bin/$triple$api-clang" --cxx="$bin/$triple$api-clang++" \
+                --ar="$bin/llvm-ar" --nm="$bin/llvm-nm" --ranlib="$bin/llvm-ranlib" \
+                --strip="$bin/llvm-strip" \
+                --extra-cflags="-I$tls/include" --extra-ldflags="-L$tls/lib" \
+                --enable-version3 --enable-mbedtls --enable-zlib --enable-protocol=ftp \
+                "$@"
+            mkdir -p "$out/lib/$abi"
+            cp "$work/install-android-$abi/lib"/*.a "$out/lib/$abi/"
+            # FFmpeg's TLS needs mbed TLS's own libraries at the app's link
+            cp "$tls/lib"/libmbed*.a "$out/lib/$abi/"
+        }
+        android_slice arm64-v8a aarch64 aarch64-linux-android
+        android_slice x86_64 x86_64 x86_64-linux-android --disable-x86asm
+        cp -r "$work/install-android-arm64-v8a/include" "$out/include"
+        ;;
     *)
-        echo "usage: $0 windows|macos|ios <out-dir>" >&2
+        echo "usage: $0 windows|macos|ios|android <out-dir>" >&2
         exit 2
         ;;
 esac
