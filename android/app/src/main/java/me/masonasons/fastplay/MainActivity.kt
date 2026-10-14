@@ -13,6 +13,7 @@ import android.view.Gravity
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
@@ -51,7 +52,10 @@ class MainActivity : AppCompatActivity() {
     /** Files opened from other apps, kept open for as long as FastPlay runs (see openIncoming). */
     private val openFiles = mutableListOf<ParcelFileDescriptor>()
 
-    private val stateListener: () -> Unit = { updateBottom() }
+    private val stateListener: () -> Unit = {
+        updateBottom()
+        applyKeepScreenOn()
+    }
     private val messageListener: (String, String) -> Unit = { title, text -> Dialogs.tell(this, title, text) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,6 +69,7 @@ class MainActivity : AppCompatActivity() {
         }
         Engine.addStateListener(stateListener)
         Engine.addMessageListener(messageListener)
+        applyKeepScreenOn()
         if (!Engine.startedOk) Dialogs.tell(this, "FastPlay", "FastPlay could not start its audio engine.")
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -99,6 +104,12 @@ class MainActivity : AppCompatActivity() {
         super.onStart()
         AutoSync.runIfDue()
         if (Engine.playing) Engine.ensureDeviceRunning()
+    }
+
+    /** Keep Screen On: the window's flag, which holds only while it is in front. */
+    private fun applyKeepScreenOn() {
+        if (Engine.keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     private fun buildWindow() {

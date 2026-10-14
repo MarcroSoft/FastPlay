@@ -277,11 +277,15 @@ final class SettingsViewController: SettingsPageViewController {
                 toggle("Prevent Clipping", "replayGainPreventClip"),
             ]),
             SettingSection(title: "This Device",
-                           footer: "On, FastPlay plays alongside other apps instead of stopping them. " +
-                               "The lock screen and headphone controls then go to the other app.",
+                           footer: "With Mix With Others on, FastPlay plays alongside other apps instead of " +
+                               "stopping them, and the lock screen and headphone controls go to the other app. " +
+                               "With Keep Screen On on, the screen does not dim and lock by itself while FastPlay " +
+                               "is in front.",
                            rows: [
                                .toggle(title: "Mix With Others", isOn: { engine.mixWithOthers },
                                        set: { engine.mixWithOthers = $0 }),
+                               .toggle(title: "Keep Screen On", isOn: { KeepScreenOn.enabled },
+                                       set: { KeepScreenOn.enabled = $0 }),
                            ]),
         ] },
         Page(title: "Recording", detail: "Format and bitrate", symbol: "record.circle") { _ in [

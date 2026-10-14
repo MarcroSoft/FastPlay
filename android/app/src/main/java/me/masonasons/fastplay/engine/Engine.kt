@@ -214,6 +214,14 @@ object Engine {
             postStateChange()
         }
 
+    /** While FastPlay is in front, the screen does not dim and lock by itself. Off unless turned on. */
+    var keepScreenOn: Boolean
+        get() = prefs().getBoolean("KeepScreenOn", false)
+        set(value) {
+            prefs().edit().putBoolean("KeepScreenOn", value).apply()
+            postStateChange()
+        }
+
     val engineInfo: String get() = Native.engineInfo()
     val version: String get() = Native.version()
 
