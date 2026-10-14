@@ -237,9 +237,11 @@ class MainActivity : AppCompatActivity() {
     // ---- What other apps hand over ----
 
     private fun handle(intent: Intent?) {
-        val uri = intent?.data ?: return
-        if (DropboxClient.handleRedirect(uri)) return
-        if (intent.action == Intent.ACTION_VIEW) openIncoming(uri)
+        intent ?: return
+        intent.data?.let { uri ->
+            if (DropboxClient.handleRedirect(uri)) return
+            if (intent.action == Intent.ACTION_VIEW) openIncoming(uri)
+        }
         if (BuildConfig.DEBUG) DebugLaunch.run(this, intent)
     }
 
