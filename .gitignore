@@ -64,6 +64,7 @@ build-engine*/
 ci/ffmpeg/work/
 /ffmpeg/
 /ffmpeg-ios/
+/ffmpeg-android/
 
 # The iPhone app: the engine built for it, and Xcode's project (made by xcodegen)
 /ios/build/
