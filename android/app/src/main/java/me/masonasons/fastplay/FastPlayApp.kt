@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.Environment
 import me.masonasons.fastplay.engine.Engine
 import me.masonasons.fastplay.playback.PlaybackController
+import me.masonasons.fastplay.youtube.YouTubeServer
 import java.io.File
 
 /** Starts the engine as the app starts, as the iPhone's AppDelegate does. */
@@ -15,6 +16,8 @@ class FastPlayApp : Application() {
         me.masonasons.fastplay.remote.LoopbackServer.startForRestore()
         Engine.start(this, documentsFolder().path)
         PlaybackController.init(this)
+        // YouTube videos in the playlist (restored from last time) play through it
+        YouTubeServer.start()
     }
 
     companion object {

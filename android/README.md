@@ -16,6 +16,11 @@ least it can be, and it is noted where it is made. YouTube is Android's alone.
 3. `android/local.properties` with `sdk.dir=` your Android SDK.
 4. `cd android && ./gradlew assembleDebug` (NDK 27.3.13750724, CMake 3.22.1).
 
+YouTube's yt-dlp is Python in the app (Chaquopy), installed by pip as the app is
+built: that needs Python 3.13 (`py -3.13` on Windows, `python3.13` elsewhere).
+QuickJS, which yt-dlp runs YouTube's challenges with, is built with the engine
+(`src/main/cpp/CMakeLists.txt`) and packaged as `libqjs.so`.
+
 CI (`.github/workflows/android.yml`) builds the release APK on every push to
 master that touches it and puts it on the `latest` release as `FastPlay.apk`.
 

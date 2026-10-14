@@ -6,6 +6,7 @@ import java.io.ByteArrayOutputStream
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.chaquo.python")
 }
 
 // The version is the engine's (include/fastplay/version.h); the build number is the
@@ -102,6 +103,21 @@ android {
         // JSch and Bouncy Castle (the servers' libraries) both carry this, which no one reads
         resources {
             excludes += "META-INF/versions/*/OSGI-INF/MANIFEST.MF"
+        }
+    }
+}
+
+// ---- YouTube: yt-dlp, in Python inside the app (Chaquopy) ----
+// The APK carries this yt-dlp (and yt-dlp-ejs, the scripts that answer YouTube's
+// challenges, run by QuickJS: src/main/cpp/CMakeLists.txt); FastPlay downloads a
+// newer release at run time (src/main/python/fastplay_youtube.py). Building needs
+// Python 3.13 (Windows: py -3.13; elsewhere: python3.13).
+chaquopy {
+    defaultConfig {
+        version = "3.13"
+        pip {
+            install("yt-dlp==2026.8.19")
+            install("yt-dlp-ejs==0.8.0")
         }
     }
 }
