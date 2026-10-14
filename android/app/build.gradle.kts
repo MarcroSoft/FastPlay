@@ -99,6 +99,10 @@ android {
             // Programs run as files (yt-dlp's JavaScript runtime) must be unpacked
             useLegacyPackaging = true
         }
+        // JSch and Bouncy Castle (the servers' libraries) both carry this, which no one reads
+        resources {
+            excludes += "META-INF/versions/*/OSGI-INF/MANIFEST.MF"
+        }
     }
 }
 
@@ -123,4 +127,13 @@ dependencies {
     // Signing in to Dropbox in a browser tab
     implementation("androidx.browser:browser:1.8.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
+
+    // Servers (remote/): SMB through smbj, a server's list of shares through its
+    // DCE/RPC companion (SRVSVC), SFTP through JSch (the maintained fork). smbj
+    // brings Bouncy Castle (bcprov), which it calls directly rather than as a
+    // security provider, so it never meets Android's own "BC" provider; JSch is
+    // pointed at the same classes for Ed25519 and Curve25519 (SFTPSource).
+    implementation("com.hierynomus:smbj:0.15.0")
+    implementation("com.rapid7.client:dcerpc:0.12.13")
+    implementation("com.github.mwiede:jsch:2.28.7")
 }
