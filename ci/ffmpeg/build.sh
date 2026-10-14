@@ -166,7 +166,8 @@ case "$platform" in
     android)
         # Android has no system TLS that C code can use, so HTTPS is mbed TLS,
         # built here with FFmpeg (Apache 2.0, which makes this FFmpeg LGPL v3: hence
-        # --enable-version3). FTP as well, as on the iPhone.
+        # --enable-version3). FFmpeg's mbed TLS code does DTLS too, which needs its
+        # UDP protocol. FTP as well, as on the iPhone.
         ndk="${ANDROID_NDK_HOME:?set ANDROID_NDK_HOME to the NDK}"
         api=26  # the app's minSdk
         host="$(uname -s | tr '[:upper:]' '[:lower:]')-x86_64"
@@ -197,6 +198,7 @@ case "$platform" in
                 --strip="$bin/llvm-strip" \
                 --extra-cflags="-I$tls/include" --extra-ldflags="-L$tls/lib" \
                 --enable-version3 --enable-mbedtls --enable-zlib --enable-protocol=ftp \
+                --enable-protocol=udp \
                 "$@"
             mkdir -p "$out/lib/$abi"
             cp "$work/install-android-$abi/lib"/*.a "$out/lib/$abi/"
