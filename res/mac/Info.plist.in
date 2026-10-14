@@ -28,6 +28,8 @@
     <string>NSApplication</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>FastPlay uses VoiceOver to speak feedback from global shortcuts while you work in another app.</string>
     <key>NSSupportsAutomaticTermination</key>
     <false/>
     <key>NSSupportsSuddenTermination</key>

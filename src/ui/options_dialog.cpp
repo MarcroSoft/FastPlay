@@ -516,6 +516,13 @@ void OptionsDialog::BuildSpeechPage(wxNotebook* book) {
     m_speechVolume = AddCheck(page, sizer, "Speak &volume when adjusted", g_speechVolume);
     m_speechEffect = AddCheck(page, sizer, "Speak &effect value when adjusted", g_speechEffect);
 
+#ifdef __APPLE__
+	auto* voiceOverHelp = new wxStaticText(page, wxID_ANY,
+		"For VoiceOver feedback while FastPlay is in the background, enable \"Allow VoiceOver to be controlled with AppleScript\" in VoiceOver Utility > General. Allow FastPlay to control VoiceOver if macOS asks. If access is unavailable, feedback uses the system voice.");
+	voiceOverHelp->Wrap(500);
+	sizer->Add(voiceOverHelp, 0, wxTOP | wxBOTTOM, 3);
+#endif
+
     page->SetSizer(new wxBoxSizer(wxVERTICAL));
     page->GetSizer()->Add(sizer, 1, wxEXPAND | wxALL, 10);
     page->FitInside();
