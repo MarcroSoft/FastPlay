@@ -28,7 +28,6 @@ import me.masonasons.fastplay.dropbox.DropboxClient
 import me.masonasons.fastplay.engine.Engine
 import me.masonasons.fastplay.files.AutoSync
 import me.masonasons.fastplay.files.FolderResume
-import me.masonasons.fastplay.ui.DirectTouchGate
 import me.masonasons.fastplay.ui.Dialogs
 import me.masonasons.fastplay.ui.HomeScreen
 import me.masonasons.fastplay.ui.PlayerScreen
@@ -73,14 +72,12 @@ class MainActivity : AppCompatActivity() {
             // For the media notification: play and pause from the lock screen and the shade
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        DirectTouchGate.attach(this)
         if (savedInstanceState == null) handle(intent)
     }
 
     override fun onDestroy() {
         Engine.removeStateListener(stateListener)
         Engine.removeMessageListener(messageListener)
-        DirectTouchGate.detach(this)
         super.onDestroy()
     }
 

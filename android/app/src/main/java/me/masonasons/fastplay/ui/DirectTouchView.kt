@@ -28,13 +28,18 @@ import kotlin.math.hypot
  *   two fingers up or down       the parameter up or down
  *   two finger tap               play or pause
  *
- * With BackTalk's direct touch (DirectTouchGate) the touches come straight here
- * while a screen reader runs, and FastPlay says what each one did. Under plain
- * TalkBack, which passes no touches through, the same commands are this area's
- * actions in TalkBack's actions menu.
+ * With BackTalk's direct touch regions (offered to BackTalk, not in it yet) the
+ * touches would come straight here while a screen reader runs, and FastPlay says
+ * what each one did. Under TalkBack, which passes no touches through, the same
+ * commands are this area's actions in TalkBack's actions menu.
  */
 @SuppressLint("ViewConstructor")
 class DirectTouchView(context: Context) : LinearLayout(context) {
+    companion object {
+        /** The accessibility extra that tells BackTalk a view takes touches directly. */
+        const val REGION_EXTRA = "dev.nvgt.DIRECT_TOUCH_REGION"
+    }
+
     /** Spring or tape seeking: a drag left or right scrubs while it is held, in place of the swipe that jumps. */
     var scrubMode = false
         set(value) {
@@ -100,7 +105,7 @@ class DirectTouchView(context: Context) : LinearLayout(context) {
                 super.onInitializeAccessibilityNodeInfo(host, info)
                 info.hintText = hintText
                 // For BackTalk: this area takes touches directly (its direct touch regions)
-                info.extras.putBoolean(DirectTouchGate.REGION_EXTRA, true)
+                info.extras.putBoolean(REGION_EXTRA, true)
             }
         })
         val commands = listOf(

@@ -268,7 +268,6 @@ class PlayerScreen : Screen() {
 
     override fun onPause() {
         handler.removeCallbacks(tick)
-        DirectTouchGate.touchMode = false
         super.onPause()
     }
 
@@ -331,7 +330,6 @@ class PlayerScreen : Screen() {
             root.addView(scroll)
         }
         touchView.layoutParams = touchParams
-        DirectTouchGate.touchMode = touch && isResumed
     }
 
     private fun refresh() {

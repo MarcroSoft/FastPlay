@@ -30,17 +30,11 @@
         android:usesCleartextTraffic="true"
         tools:targetApi="35">
 
-        <!-- BackTalk (a TalkBack fork) passes touches straight to apps that ask
-             for direct touch, and turns FastPlay on in its list the first time it
-             sees it. FastPlay wants it only for the player's touch area: a BackTalk
-             that knows regions passes through just that view; one that does not
-             passes the whole screen, and FastPlay keeps a small window open
-             everywhere but touch mode to keep touch with BackTalk (DirectTouchGate). -->
+        <!-- BackTalk (a TalkBack fork) can pass touches straight to an app. With
+             regions (offered to BackTalk, not in it yet) it passes through only the
+             views an app marks: here the player's touch area (DirectTouchView). -->
         <meta-data
             android:name="dev.nvgt.capability.DIRECT_TOUCH_REGIONS"
-            android:value="true" />
-        <meta-data
-            android:name="dev.nvgt.capability.DIRECT_TOUCH"
             android:value="true" />
 
         <activity
