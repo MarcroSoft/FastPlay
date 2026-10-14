@@ -74,6 +74,12 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # Chaquopy builds the app's Python (yt-dlp for YouTube) with the same version
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
       # SQLite and the tempo libraries (deps/); FFmpeg is the one built above
       - name: Download dependencies
         run: |

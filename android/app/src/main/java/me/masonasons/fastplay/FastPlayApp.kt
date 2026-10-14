@@ -12,12 +12,12 @@ class FastPlayApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        // Listening before the engine reopens what was playing, which may be a file it serves
+        // Listening before the engine reopens what was playing, which may be a file
+        // one of them serves: a server's, or a YouTube video
         me.masonasons.fastplay.remote.LoopbackServer.startForRestore()
+        YouTubeServer.start()
         Engine.start(this, documentsFolder().path)
         PlaybackController.init(this)
-        // YouTube videos in the playlist (restored from last time) play through it
-        YouTubeServer.start()
     }
 
     companion object {

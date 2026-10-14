@@ -241,6 +241,6 @@ object Engine {
         get() = Native.speechMuted()
         set(value) = Native.setSpeechMuted(value)
 
-    /** The app's own settings, apart from FastPlay.ini (the iPhone's user defaults). */
-    fun prefs() = context.getSharedPreferences("FastPlay", Context.MODE_PRIVATE)
+    /** The app's own settings, apart from FastPlay.ini (the iPhone's user defaults). Ready before [start]. */
+    fun prefs() = me.masonasons.fastplay.FastPlayApp.instance.getSharedPreferences("FastPlay", Context.MODE_PRIVATE)
 }
