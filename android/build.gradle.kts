@@ -2,4 +2,6 @@
 plugins {
     id("com.android.application") version "8.7.3" apply false
     id("org.jetbrains.kotlin.android") version "2.1.0" apply false
+    // YouTube: Python in the app, for yt-dlp
+    id("com.chaquo.python") version "17.0.0" apply false
 }
