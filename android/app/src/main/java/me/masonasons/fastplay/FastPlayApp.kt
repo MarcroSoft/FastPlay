@@ -11,6 +11,8 @@ class FastPlayApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // Listening before the engine reopens what was playing, which may be a file it serves
+        me.masonasons.fastplay.remote.LoopbackServer.startForRestore()
         Engine.start(this, documentsFolder().path)
         PlaybackController.init(this)
     }
