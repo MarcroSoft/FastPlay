@@ -206,6 +206,13 @@ jobs:
       - name: List artifacts
         run: ls -la artifacts/
 
+      # The Android APK is built by android.yml, only when the app's code changes:
+      # the one on the release now goes on the new one.
+      - name: Keep the Android APK
+        run: gh release download latest -p FastPlay.apk -D artifacts/ || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Delete existing latest release
         run: gh release delete latest --yes --cleanup-tag || true
         env:
@@ -232,6 +239,7 @@ jobs:
             - **Windows Installer:** FastPlayInstaller.exe (recommended for most users)
             - **Windows Portable:** FastPlay.zip (no installation required)
             - **macOS:** FastPlay-macOS.zip (macOS 11 or later, Apple silicon and Intel)
+            - **Android:** FastPlay.apk (Android 8 or later)
 
             ## macOS installation
             1. Download and unzip FastPlay-macOS.zip
