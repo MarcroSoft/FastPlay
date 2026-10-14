@@ -38,6 +38,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # every commit: their count is the build number
 
       - name: Install the NDK
         run: |
@@ -62,3 +64,54 @@ jobs:
         with:
           name: ffmpeg-android
           path: ffmpeg-android
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # SQLite and the tempo libraries (deps/); FFmpeg is the one built above
+      - name: Download dependencies
+        run: |
+          chmod +x download-deps.sh
+          ./download-deps.sh
+
+      - name: Decode the release keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        if: env.KEYSTORE_B64 != ''
+        run: |
+          printf '%s' "$KEYSTORE_B64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/release.jks"
+          {
+            echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/release.jks"
+            echo "ANDROID_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+            echo "ANDROID_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}"
+            echo "ANDROID_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}"
+            echo "SIGNED=1"
+          } >> "$GITHUB_ENV"
+
+      - name: Build the APK
+        working-directory: android
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --no-daemon
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FastPlay-Android
+          path: android/app/build/outputs/apk/release/FastPlay.apk
+          if-no-files-found: error
+
+      # Only a signed build goes out: one signed with a debug key could not be
+      # updated by the next
+      - name: Attach the APK to the latest release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master' && env.SIGNED == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload latest android/app/build/outputs/apk/release/FastPlay.apk --clobber
