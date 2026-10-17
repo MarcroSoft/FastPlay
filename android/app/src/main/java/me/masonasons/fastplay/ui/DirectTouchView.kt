@@ -13,6 +13,7 @@ import android.widget.TextView
 import androidx.core.view.AccessibilityDelegateCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import me.masonasons.fastplay.R
 import kotlin.math.abs
 import kotlin.math.hypot
 
@@ -35,11 +36,6 @@ import kotlin.math.hypot
  */
 @SuppressLint("ViewConstructor")
 class DirectTouchView(context: Context) : LinearLayout(context) {
-    companion object {
-        /** The accessibility extra that tells BackTalk a view takes touches directly. */
-        const val REGION_EXTRA = "dev.nvgt.DIRECT_TOUCH_REGION"
-    }
-
     /** Spring or tape seeking: a drag left or right scrubs while it is held, in place of the swipe that jumps. */
     var scrubMode = false
         set(value) {
@@ -100,12 +96,12 @@ class DirectTouchView(context: Context) : LinearLayout(context) {
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
         for (i in 0 until childCount) getChildAt(i).importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         contentDescription = "Touch controls"
+        // For BackTalk: the ID that marks a view as taking touches directly (its direct touch regions)
+        id = R.id.dev_nvgt_direct_touch_region
         ViewCompat.setAccessibilityDelegate(this, object : AccessibilityDelegateCompat() {
             override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
                 super.onInitializeAccessibilityNodeInfo(host, info)
                 info.hintText = hintText
-                // For BackTalk: this area takes touches directly (its direct touch regions)
-                info.extras.putBoolean(REGION_EXTRA, true)
             }
         })
         val commands = listOf(

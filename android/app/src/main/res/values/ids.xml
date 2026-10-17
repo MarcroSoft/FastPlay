@@ -2,4 +2,6 @@
 <resources>
     <!-- Where MainActivity shows the screen in front -->
     <item name="screen" type="id" />
+    <!-- The player's touch area: BackTalk passes touches straight to views with this ID -->
+    <item name="dev_nvgt_direct_touch_region" type="id" />
 </resources>
