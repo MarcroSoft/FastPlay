@@ -100,7 +100,7 @@ target_include_directories(fastplay_engine
         src/engine_lib
         include/fastplay
         ${FASTPLAY_FFMPEG_DIR}/include
-        ${miniaudio_SOURCE_DIR}
+        ${FASTPLAY_MINIAUDIO_DIR}
         deps/speedy
         deps/sonic
         deps/kissfft
