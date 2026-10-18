@@ -119,6 +119,7 @@ final class SFTPSource: FileSource {
                 if piece.readableBytes == 0 { break }
                 try output.write(contentsOf: Data(piece.readableBytesView))
                 offset += UInt64(piece.readableBytes)
+                TransferMeter.current?.add(piece.readableBytes)
             }
         } catch {
             try? manager.removeItem(at: destination)
@@ -146,6 +147,7 @@ final class SFTPSource: FileSource {
                 guard let chunk = try input.read(upToCount: 256 * 1024), !chunk.isEmpty else { break }
                 try await remote.write(ByteBuffer(bytes: chunk), at: offset)
                 offset += UInt64(chunk.count)
+                TransferMeter.current?.add(chunk.count)
             }
             try await remote.close()
         } catch {

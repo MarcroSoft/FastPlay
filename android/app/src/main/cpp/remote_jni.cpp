@@ -66,14 +66,21 @@ JNI(jobjectArray, ftpList)(JNIEnv* env, jclass, jstring url) {
 }
 
 // Copies the file at `url` to `path`. `cancel` (a Cancellation.kt) is asked now and
-// then; true gives up, leaving nothing behind. "" when done, or the error.
-JNI(jstring, ftpCopy)(JNIEnv* env, jclass, jstring url, jstring path, jobject cancel) {
+// then; true gives up, leaving nothing behind. `copied` (a Copied, Native.kt), if
+// given, is told of each piece written. "" when done, or the error.
+JNI(jstring, ftpCopy)(JNIEnv* env, jclass, jstring url, jstring path, jobject cancel, jobject copied) {
     const std::string address = ToUtf8(env, url);
     const std::string target = ToUtf8(env, path);
     jmethodID cancelled = nullptr;
     if (cancel) {
         jclass type = env->GetObjectClass(cancel);
         cancelled = env->GetMethodID(type, "isCancelled", "()Z");
+        env->DeleteLocalRef(type);
+    }
+    jmethodID wrote = nullptr;
+    if (copied) {
+        jclass type = env->GetObjectClass(copied);
+        wrote = env->GetMethodID(type, "copied", "(I)V");
         env->DeleteLocalRef(type);
     }
     AVDictionary* options = nullptr;
@@ -104,6 +111,7 @@ JNI(jstring, ftpCopy)(JNIEnv* env, jclass, jstring url, jstring path, jobject ca
             error = ErrorFor(AVERROR(errno), "Could not write the file here:");
             break;
         }
+        if (wrote) env->CallVoidMethod(copied, wrote, static_cast<jint>(n));
     }
     fclose(file);
     avio_closep(&source);

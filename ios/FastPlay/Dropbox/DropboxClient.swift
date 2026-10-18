@@ -221,9 +221,14 @@ final class DropboxClient: NSObject, ASWebAuthenticationPresentationContextProvi
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
         request.setValue(Self.headerJSON(arguments), forHTTPHeaderField: "Dropbox-API-Arg")
         let (data, response): (Data, URLResponse)
+        // What it sends counts for the speed shown
+        let metered = MeteredTask(TransferMeter.current)
+        defer { metered.finish() }
         switch body {
-        case let .file(url): (data, response) = try await URLSession.shared.upload(for: request, fromFile: url)
-        case let .data(bytes): (data, response) = try await URLSession.shared.upload(for: request, from: bytes)
+        case let .file(url):
+            (data, response) = try await URLSession.shared.upload(for: request, fromFile: url, delegate: metered)
+        case let .data(bytes):
+            (data, response) = try await URLSession.shared.upload(for: request, from: bytes, delegate: metered)
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401, !retried {
@@ -270,7 +275,10 @@ final class DropboxClient: NSObject, ASWebAuthenticationPresentationContextProvi
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue(Self.headerJSON(["path": path]), forHTTPHeaderField: "Dropbox-API-Arg")
-        let (temporary, response) = try await URLSession.shared.download(for: request)
+        // What it receives counts for the speed shown
+        let metered = MeteredTask(TransferMeter.current)
+        defer { metered.finish() }
+        let (temporary, response) = try await URLSession.shared.download(for: request, delegate: metered)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200 else {
             try? FileManager.default.removeItem(at: temporary)

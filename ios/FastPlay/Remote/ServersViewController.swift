@@ -114,6 +114,8 @@ final class ServersViewController: FastPlayTableViewController {
 
     override func tableView(_ tableView: UITableView,
                             trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        // VoiceOver lists swipe actions along with the row's own, which have these already
+        if UIAccessibility.isVoiceOverRunning { return nil }
         let server = servers[indexPath.row]
         let delete = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, done in
             self?.delete(server)

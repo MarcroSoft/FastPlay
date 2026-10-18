@@ -20,6 +20,7 @@ import me.masonasons.fastplay.files.FileEntry
 import me.masonasons.fastplay.files.FileOperations
 import me.masonasons.fastplay.files.FileSource
 import me.masonasons.fastplay.files.RemoteError
+import me.masonasons.fastplay.files.TransferMeter
 import me.masonasons.fastplay.files.deleteContents
 import java.io.File
 import java.io.InputStream
@@ -218,7 +219,7 @@ class SFTPSource(private val server: RemoteServer, password: String? = null) : F
     }
 
     override suspend fun download(entry: FileEntry, destination: File) = io {
-        val watch = Watch(currentCoroutineContext()[Job], idle)
+        val watch = Watch(currentCoroutineContext()[Job], idle, TransferMeter.current())
         destination.delete()
         val channel = openChannel()
         try {
@@ -241,7 +242,7 @@ class SFTPSource(private val server: RemoteServer, password: String? = null) : F
 
     override suspend fun upload(file: File, name: String, toFolder: String) = io {
         val parent = resolved(toFolder)
-        val watch = Watch(currentCoroutineContext()[Job], idle)
+        val watch = Watch(currentCoroutineContext()[Job], idle, TransferMeter.current())
         val channel = openChannel()
         try {
             file.inputStream().use { input -> channel.put(input, quote(path(name, parent)), watch, ChannelSftp.OVERWRITE) }
@@ -277,10 +278,14 @@ class SFTPSource(private val server: RemoteServer, password: String? = null) : F
     // ---- Pieces ----
 
     /** A copy's progress: going on while its task is, and the connection kept from looking idle. */
-    private class Watch(private val job: Job?, private val idle: IdleCloser) : SftpProgressMonitor {
+    /** Told of each piece sent or received: keeps the connection, counts it, and stops it if asked. */
+    private class Watch(
+        private val job: Job?, private val idle: IdleCloser, private val meter: TransferMeter?,
+    ) : SftpProgressMonitor {
         override fun init(op: Int, src: String?, dest: String?, max: Long) {}
         override fun count(count: Long): Boolean {
             idle.used()
+            meter?.add(count)
             return job?.isActive != false
         }
         override fun end() {}

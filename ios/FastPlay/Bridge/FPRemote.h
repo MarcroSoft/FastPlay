@@ -19,9 +19,12 @@ NS_ASSUME_NONNULL_BEGIN
     NS_SWIFT_NAME(listFolder(atURL:));
 
 // Copies the file at `url` to `path`. `shouldStop` is asked now and then; true
-// gives up, leaving nothing behind.
-+ (BOOL)copyURL:(NSString*)url toFile:(NSString*)path shouldStop:(BOOL (^)(void))shouldStop error:(NSError**)error
-    NS_SWIFT_NAME(copy(url:toFile:shouldStop:));
+// gives up, leaving nothing behind. `copied` is told of each piece written, in bytes.
++ (BOOL)copyURL:(NSString*)url
+         toFile:(NSString*)path
+     shouldStop:(BOOL (^)(void))shouldStop
+         copied:(void (^)(NSInteger count))copied
+          error:(NSError**)error NS_SWIFT_NAME(copy(url:toFile:shouldStop:copied:));
 
 @end
 

@@ -61,6 +61,9 @@ enum AutoSyncStore {
 extension Notification.Name {
     /// Posted on the main thread when an automatic sync of every folder has finished.
     static let autoSyncDidFinish = Notification.Name("FPAutoSyncDidFinish")
+    /// Posted on the main thread when AutoSync.status changes: every second or so
+    /// while it syncs, and when it is done.
+    static let autoSyncStatusDidChange = Notification.Name("FPAutoSyncStatusDidChange")
 }
 
 /// Syncing the folders that sync by themselves: when FastPlay starts, and when it
@@ -69,6 +72,25 @@ extension Notification.Name {
 enum AutoSync {
     private static var running = false
     private static var lastRun: Date?
+
+    /// Where an automatic sync has got, for the Home screen and Auto Sync.
+    struct Status {
+        /// Syncing now, or done.
+        let running: Bool
+        /// The folder being synced, while running.
+        let folderID: UUID?
+        /// "Music, 1 of 2 folders" while running; "Finished at 10:42" when done.
+        let heading: String
+        /// How the folder's sync is going (TransferProgress), or what each folder's did.
+        let detail: String
+
+        var text: String { detail.isEmpty ? heading : "\(heading)\n\(detail)" }
+    }
+
+    /// Nil until an automatic sync has run since FastPlay started.
+    private(set) static var status: Status? {
+        didSet { NotificationCenter.default.post(name: .autoSyncStatusDidChange, object: nil) }
+    }
 
     static func runIfDue() {
         if let last = lastRun, Date().timeIntervalSince(last) < 30 * 60 { return }
@@ -89,12 +111,17 @@ enum AutoSync {
                                  argument: folders.count == 1 ? "Auto syncing \(folders[0].name)" : "Auto syncing \(folders.count) folders")
         }
         var summary: [String] = []
-        for folder in folders {
+        for (index, folder) in folders.enumerated() {
+            let heading = folders.count == 1 ? folder.name : "\(folder.name), \(index + 1) of \(folders.count) folders"
+            status = Status(running: true, folderID: folder.id, heading: heading, detail: "Looking…")
             var outcome: String
             if let source = FileSources.source(id: folder.sourceID) {
                 do {
                     outcome = try await FolderSync.run(source: source, entry: folder.folder, sync: true,
-                                                       progress: { _ in }, confirmDeleting: nil) ?? "Stopped."
+                                                       progress: { detail in
+                                                           status = Status(running: true, folderID: folder.id,
+                                                                           heading: heading, detail: detail)
+                                                       }, confirmDeleting: nil) ?? "Stopped."
                 } catch {
                     outcome = FolderSync.describe(error)
                 }
@@ -104,6 +131,9 @@ enum AutoSync {
             AutoSyncStore.record(folder.id, outcome: outcome)
             summary.append("\(folder.name): \(outcome)")
         }
+        let time = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .short)
+        status = Status(running: false, folderID: nil, heading: "Finished at \(time)",
+                        detail: summary.joined(separator: "\n"))
         if announce {
             UIAccessibility.post(notification: .announcement, argument: "Auto sync done. " + summary.joined(separator: " "))
         }
@@ -119,12 +149,23 @@ enum FolderSync {
     /// Download leaves alone what is already here. Sync makes the folder here match
     /// the one there: files that changed are fetched again, and files here that are
     /// no longer there are deleted, after `confirmDeleting` says yes (with none
-    /// given, without asking). `progress` is told of each step. The outcome, in
-    /// words; nil if deleting was refused, in which case nothing was done.
+    /// given, without asking). `progress` is told where it has got, as it goes and
+    /// every second: the file, how much of it has come and how fast, and how long
+    /// the rest will take (TransferProgress). The outcome, in words; nil if deleting
+    /// was refused, in which case nothing was done.
     @MainActor
     static func run(source: FileSource, entry: FileEntry, sync: Bool,
-                    progress: @MainActor (String) -> Void,
+                    progress: @escaping @MainActor (String) -> Void,
                     confirmDeleting: (@MainActor (Int, String) async -> Bool)?) async throws -> String? {
+        let transfer = TransferProgress(report: progress)
+        return try await transfer.run {
+            try await run(source: source, entry: entry, sync: sync, transfer: transfer, confirmDeleting: confirmDeleting)
+        }
+    }
+
+    @MainActor
+    private static func run(source: FileSource, entry: FileEntry, sync: Bool, transfer: TransferProgress,
+                            confirmDeleting: (@MainActor (Int, String) async -> Bool)?) async throws -> String? {
         let engine = FPEngine.shared
         let manager = FileManager.default
         let documents = URL(fileURLWithPath: engine.documentsPath)
@@ -161,11 +202,11 @@ enum FolderSync {
             guard await confirmDeleting(stale.count, entry.name) else { return nil }
         }
 
-        var fetched = 0, kept = 0
-        for (index, item) in wanted.enumerated() {
-            try Task.checkCancellation()
+        // What to fetch, first, so that the time left can be told
+        var fetching: [(file: FileEntry, destination: URL)] = []
+        var kept = 0
+        for item in wanted {
             let destination = item.destination
-            progress("\(index + 1) of \(wanted.count): \(destination.lastPathComponent)")
             if manager.fileExists(atPath: destination.path) {
                 // Download keeps what is here. Sync fetches it again if the
                 // one there is another size, or changed after this copy was made.
@@ -179,6 +220,15 @@ enum FolderSync {
                     continue
                 }
             }
+            fetching.append(item)
+        }
+        transfer.total = fetching.reduce(0) { $0 + max(0, $1.file.size) }
+
+        var fetched = 0
+        for (index, item) in fetching.enumerated() {
+            try Task.checkCancellation()
+            let destination = item.destination
+            transfer.file("\(index + 1) of \(fetching.count): \(destination.lastPathComponent)", size: item.file.size)
             try manager.createDirectory(at: destination.deletingLastPathComponent(),
                                         withIntermediateDirectories: true)
             try await source.download(item.file, to: destination)

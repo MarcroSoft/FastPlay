@@ -563,6 +563,8 @@ final class BrowserViewController: FastPlayTableViewController, UIDocumentPicker
 
     override func tableView(_ tableView: UITableView,
                             trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        // VoiceOver lists swipe actions along with the row's own, which have these already
+        if UIAccessibility.isVoiceOverRunning { return nil }
         let entry = entries[indexPath.row]
         var swipes: [UIContextualAction] = []
         if source.canWrite {
@@ -687,84 +689,20 @@ final class BrowserViewController: FastPlayTableViewController, UIDocumentPicker
         if selecting { endSelecting() }
     }
 
-    private var pasteTitle: String {
-        FileClipboard.items.count == 1 ? "Paste \(FileClipboard.items[0].entry.name)"
-                                       : "Paste \(FileClipboard.items.count) Items"
-    }
+    private var pasteTitle: String { Pasting.title }
 
     /// Moves (after Cut) or copies (after Copy) what is on the clipboard into a folder here.
     private func paste(into path: String) {
-        let items = FileClipboard.items
-        guard !items.isEmpty else { return }
-        let move = FileClipboard.isCut
-        run(items, move: move, into: path, title: move ? "Moving" : "Pasting") { [weak self] finished in
-            guard finished else { return }
-            if move { FileClipboard.set([], cut: false) }  // moved: nothing left to paste
-            self?.announce(items.count == 1 ? "Pasted \(items[0].entry.name)" : "Pasted \(items.count) items")
-        }
+        Pasting.pasteClipboard(into: path, of: source, from: self) { [weak self] in self?.load() }
     }
 
     /// Copies or moves `items` into `path`, with a progress alert that can stop it,
     /// and the question about names already taken. `done` is told whether it all went.
     private func run(_ items: [FileClipboard.Item], move: Bool, into path: String, title: String,
                      done: @escaping (Bool) -> Void) {
-        let progress = UIAlertController(title: title, message: "Starting…", preferredStyle: .alert)
-        let state = ProgressState()
-        let task = Task { @MainActor in
-            let operations = FileOperations(move: move, resolver: { [weak self] pasting, existing in
-                guard let self else { return nil }
-                // The progress is in the way: aside while asking
-                state.paused = true
-                await Self.dismiss(progress)
-                let choice = await ConflictViewController.ask(from: self, pasting: pasting, existing: existing)
-                state.paused = false
-                if choice != nil, !Task.isCancelled { self.present(progress, animated: false) }
-                return choice
-            }, progress: { name, count in
-                progress.message = "\(count + 1): \(name)"
-            })
-            var problem: String?
-            do {
-                try await operations.paste(items, into: source, folder: path)
-            } catch is CancellationError {
-                problem = "Stopped."
-            } catch is FileOperations.Stopped {
-                problem = "Stopped."
-            } catch {
-                problem = FolderSync.describe(error)
-            }
-            state.finished = true
-            await Self.dismiss(progress)
-            load()
-            if let problem { tell(title == "Moving" ? "Move" : "Paste", problem) }
-            done(problem == nil)
-        }
-        progress.addAction(UIAlertAction(title: "Stop", style: .cancel) { _ in task.cancel() })
-        showSoon(progress, state)
-    }
-
-    /// Where a piece of work with a progress alert has got to.
-    private final class ProgressState {
-        var finished = false
-        var paused = false  // something else is being asked meanwhile
-    }
-
-    /// Shows `progress` once the work has taken more than a moment: quick work
-    /// flashes nothing, and nothing is dismissed while it is still appearing.
-    private func showSoon(_ progress: UIAlertController, _ state: ProgressState) {
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            guard let self, !state.finished, !state.paused, progress.presentingViewController == nil,
-                  self.presentedViewController == nil else { return }
-            self.present(progress, animated: false)
-        }
-    }
-
-    @MainActor
-    private static func dismiss(_ controller: UIViewController) async {
-        guard controller.presentingViewController != nil else { return }
-        await withCheckedContinuation { continuation in
-            controller.dismiss(animated: false) { continuation.resume() }
+        Pasting.run(items, move: move, into: path, of: source, title: title, from: self) { [weak self] finished in
+            self?.load()
+            done(finished)
         }
     }
 

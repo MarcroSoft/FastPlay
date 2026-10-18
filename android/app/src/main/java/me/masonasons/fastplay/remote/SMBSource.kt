@@ -21,6 +21,7 @@ import me.masonasons.fastplay.files.FileEntry
 import me.masonasons.fastplay.files.FileOperations
 import me.masonasons.fastplay.files.FileSource
 import me.masonasons.fastplay.files.RemoteError
+import me.masonasons.fastplay.files.TransferMeter
 import java.io.File
 import java.util.EnumSet
 import java.util.concurrent.TimeUnit
@@ -255,6 +256,7 @@ class SMBSource(private val server: RemoteServer, password: String? = null) : Fi
             SMB2CreateDisposition.FILE_OPEN, null)
 
     private suspend fun copy(input: java.io.InputStream, output: java.io.OutputStream) {
+        val meter = TransferMeter.current()
         val chunk = ByteArray(256 * 1024)
         while (true) {
             currentCoroutineContext().ensureActive()
@@ -262,6 +264,7 @@ class SMBSource(private val server: RemoteServer, password: String? = null) : Fi
             if (count < 0) break
             output.write(chunk, 0, count)
             idle.used()
+            meter?.add(count)
         }
     }
 

@@ -691,21 +691,12 @@ class BrowserScreen() : ListScreen() {
         refreshChrome()
     }
 
-    private val pasteTitle: String
-        get() = FileClipboard.items.let { if (it.size == 1) "Paste ${it[0].entry.name}" else "Paste ${it.size} Items" }
+    private val pasteTitle: String get() = Pasting.title
 
     /** Moves (after Cut) or copies (after Copy) what is on the clipboard into a folder here. */
-    private fun paste(path: String) {
-        val items = FileClipboard.items
-        if (items.isEmpty()) return
-        val move = FileClipboard.isCut
-        transferItems(items, move, path, if (move) "Moving" else "Pasting") { finished ->
-            if (!finished) return@transferItems
-            if (move) FileClipboard.set(emptyList(), cut = false)  // moved: nothing left to paste
-            announce(if (items.size == 1) "Pasted ${items[0].entry.name}" else "Pasted ${items.size} items")
-            reload()
-            refreshChrome()
-        }
+    private fun paste(path: String) = Pasting.pasteClipboard(this, path, source) {
+        load()
+        refreshChrome()
     }
 
     /**
@@ -716,67 +707,9 @@ class BrowserScreen() : ListScreen() {
     private fun transferItems(
         items: List<FileClipboard.Item>, move: Boolean, path: String, title: String,
         cleanUp: () -> Unit = {}, done: (Boolean) -> Unit,
-    ) {
-        val context = context ?: return cleanUp()
-        var job: Job? = null
-        val progress = Progress(context, title, "Starting…") { job?.cancel() }
-        job = launch {
-            val operations = FileOperations(move, resolver = { pasting, existing ->
-                // The progress is in the way: aside while asking
-                progress.paused = true
-                progress.dismiss()
-                val choice = ConflictDialog.ask(context, pasting, existing)
-                progress.paused = false
-                if (choice != null && currentCoroutineContext().isActive) progress.show()
-                choice
-            }, progress = { name, count ->
-                progress.setMessage("${count + 1}: $name")
-            })
-            var problem: String? = null
-            try {
-                operations.paste(items, source, path)
-            } catch (e: Exception) {
-                problem = FolderSync.describe(e)  // "Stopped." for Stop and Stop Pasting
-            } finally {
-                cleanUp()
-            }
-            progress.finished = true
-            progress.dismiss()
-            if (view == null) return@launch
-            load()
-            problem?.let { tell(if (title == "Moving") "Move" else "Paste", it) }
-            done(problem == null)
-        }
-        if (job == null) cleanUp() else progress.showSoon(viewLifecycleOwner.lifecycleScope)
-    }
-
-    /** A piece of work's progress, with Stop (the iPhone's progress alerts). */
-    private class Progress(context: Context, title: String, message: String, stop: () -> Unit) {
-        var finished = false
-        /** Something else is being asked meanwhile. */
-        var paused = false
-        private val dialog = MaterialAlertDialogBuilder(context)
-            .setTitle(title)
-            .setMessage(message)
-            .setNegativeButton("Stop") { _, _ -> stop() }
-            .setCancelable(false)
-            .create()
-
-        fun setMessage(text: String) = dialog.setMessage(text)
-        fun show() {
-            if (!dialog.isShowing) dialog.show()
-        }
-        fun dismiss() {
-            if (dialog.isShowing) dialog.dismiss()
-        }
-
-        /** Shown once the work has taken more than a moment: quick work flashes nothing. */
-        fun showSoon(scope: CoroutineScope) {
-            scope.launch {
-                delay(300)
-                if (!finished && !paused) show()
-            }
-        }
+    ) = Pasting.transferItems(this, items, move, path, source, title, cleanUp) { finished ->
+        load()
+        done(finished)
     }
 
     // ---- Adding ----
@@ -915,7 +848,7 @@ class BrowserScreen() : ListScreen() {
     private fun performDelete(list: List<FileEntry>) {
         val context = context ?: return
         var job: Job? = null
-        val progress = Progress(context, "Deleting", "") { job?.cancel() }
+        val progress = ProgressDialog(context, "Deleting", "") { job?.cancel() }
         job = launch {
             var deleted = 0
             var problem: String? = null
@@ -960,7 +893,7 @@ class BrowserScreen() : ListScreen() {
         val sharing = File(context.cacheDir, "Sharing")
         val holder = File(sharing, UUID.randomUUID().toString())
         var job: Job? = null
-        val progress = Progress(context, "Getting Ready to Share", "") { job?.cancel() }
+        val progress = ProgressDialog(context, "Getting Ready to Share", "") { job?.cancel() }
         job = launch {
             try {
                 withContext(Dispatchers.IO) {
@@ -1100,7 +1033,7 @@ class BrowserScreen() : ListScreen() {
             val context = context ?: return@ensure
             if (view == null) return@ensure
             var job: Job? = null
-            val progress = Progress(context, "${if (sync) "Syncing" else "Downloading"} ${entry.name}", "Looking…") {
+            val progress = ProgressDialog(context, "${if (sync) "Syncing" else "Downloading"} ${entry.name}", "Looking…") {
                 job?.cancel()
             }
             job = launch {

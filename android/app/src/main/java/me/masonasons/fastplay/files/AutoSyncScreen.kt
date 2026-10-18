@@ -18,14 +18,18 @@ class AutoSyncScreen : ListScreen() {
     override val showsMiniPlayer = false
     private var folders = AutoSyncStore.all
     private val finished: () -> Unit = { if (view != null) refresh() }
+    // The folder syncing now, with how the ones before it went, brought up to date where it is
+    private val statusChanged: () -> Unit = { if (view != null && AutoSync.status?.running == true) refresh() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AutoSync.addFinishListener(finished)
+        AutoSync.addStatusListener(statusChanged)
     }
 
     override fun onDestroy() {
         AutoSync.removeFinishListener(finished)
+        AutoSync.removeStatusListener(statusChanged)
         super.onDestroy()
     }
 
@@ -58,8 +62,11 @@ class AutoSyncScreen : ListScreen() {
 
     private fun detail(folder: AutoSyncFolder): String {
         val lines = mutableListOf("${FileSources.title(folder.sourceId)}: ${folder.displayPath.ifEmpty { "/" }}")
+        val status = AutoSync.status
         val date = folder.lastSynced
-        if (date != null) {
+        if (status != null && status.running && status.folderId == folder.id) {
+            lines.add("Syncing now.\n${status.detail}")
+        } else if (date != null) {
             val time = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(date))
             lines.add("Last synced $time. ${folder.lastOutcome ?: ""}")
         } else {
