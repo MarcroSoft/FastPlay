@@ -3,6 +3,7 @@ package me.masonasons.fastplay.remote
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import me.masonasons.fastplay.files.RemoteError
+import me.masonasons.fastplay.files.TransferMeter
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
@@ -79,6 +80,7 @@ class FTPClient(private val host: String, port: Int?) : Closeable {
         try {
             val started = command("STOR $path")
             check(started, 100..199, "The server would not take the file.")
+            val meter = TransferMeter.current()
             file.inputStream().use { source ->
                 val out = data.getOutputStream()
                 val chunk = ByteArray(64 * 1024)
@@ -87,6 +89,7 @@ class FTPClient(private val host: String, port: Int?) : Closeable {
                     val count = source.read(chunk)
                     if (count < 0) break
                     out.write(chunk, 0, count)
+                    meter?.add(count)
                 }
                 out.flush()
             }

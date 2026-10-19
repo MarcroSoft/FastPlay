@@ -100,7 +100,12 @@ final class SMBSource: FileSource {
         let (manager, below) = try await place(path(of: name, in: folder))
         // It writes only a new file: one there goes first
         if (try? await manager.attributesOfItem(atPath: below)) != nil { try await manager.removeItem(atPath: below) }
-        try await manager.uploadItem(at: file, toPath: below) { _ in !Task.isCancelled }
+        // It tells how far into the file it has got
+        let sent = TransferMeter.Running(TransferMeter.current)
+        try await manager.uploadItem(at: file, toPath: below) { bytes in
+            sent.reached(bytes)
+            return !Task.isCancelled
+        }
     }
 
     func rename(_ entry: FileEntry, to name: String) async throws {
@@ -136,6 +141,10 @@ final class SMBSource: FileSource {
         let (share, below) = split(entry.path)
         let manager = try await manager(forShare: share)
         try? FileManager.default.removeItem(at: destination)
-        try await manager.downloadItem(atPath: below, to: destination) { _, _ in !Task.isCancelled }
+        let received = TransferMeter.Running(TransferMeter.current)
+        try await manager.downloadItem(atPath: below, to: destination) { bytes, _ in
+            received.reached(bytes)
+            return !Task.isCancelled
+        }
     }
 }

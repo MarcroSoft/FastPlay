@@ -11,6 +11,7 @@ import me.masonasons.fastplay.files.FileEntry
 import me.masonasons.fastplay.files.FileOperations
 import me.masonasons.fastplay.files.FileSource
 import me.masonasons.fastplay.files.RemoteError
+import me.masonasons.fastplay.files.TransferMeter
 import me.masonasons.fastplay.files.deleteContents
 import java.io.File
 
@@ -111,8 +112,9 @@ class FTPSource(private val server: RemoteServer, password: String? = null) : Fi
     override suspend fun download(entry: FileEntry, destination: File) {
         val url = address(entry.path)
         val job = currentCoroutineContext()[Job]
+        val meter = TransferMeter.current()
         val error = withContext(Dispatchers.IO) {
-            Native.ftpCopy(url, destination.path) { job?.isActive == false }
+            Native.ftpCopy(url, destination.path, { job?.isActive == false }, { meter?.add(it) })
         }
         currentCoroutineContext().ensureActive()
         if (error == "Cancelled.") throw CancellationException(error)

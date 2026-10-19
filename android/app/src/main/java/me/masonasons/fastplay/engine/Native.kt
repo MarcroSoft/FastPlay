@@ -117,10 +117,15 @@ object Native {
 
     // ---- FTP through FFmpeg (remote_jni.cpp) ----
     @JvmStatic external fun ftpList(url: String): Array<String>
-    @JvmStatic external fun ftpCopy(url: String, path: String, cancel: Cancellation?): String
+    @JvmStatic external fun ftpCopy(url: String, path: String, cancel: Cancellation?, copied: Copied?): String
 }
 
 /** Asked now and then by a long job in the engine: true gives it up. */
 fun interface Cancellation {
     fun isCancelled(): Boolean
+}
+
+/** Told of each piece a long copy in the engine writes, in bytes. */
+fun interface Copied {
+    fun copied(count: Int)
 }

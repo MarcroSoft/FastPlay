@@ -12,6 +12,8 @@ import me.masonasons.fastplay.engine.Engine
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.text.DateFormat
+import java.util.Date
 import java.util.UUID
 
 /**
@@ -98,10 +100,36 @@ object AutoSync {
     private var lastRun: Long? = null
     private val scope = MainScope()
     private val finishListeners = mutableListOf<() -> Unit>()
+    private val statusListeners = mutableListOf<() -> Unit>()
 
     /** Told (on the main thread) when an automatic sync of every folder has finished. */
     fun addFinishListener(listener: () -> Unit) = finishListeners.add(listener)
     fun removeFinishListener(listener: () -> Unit) = finishListeners.remove(listener)
+
+    /** Where an automatic sync has got, for the Home screen and Auto Sync. */
+    class Status(
+        /** Syncing now, or done. */
+        val running: Boolean,
+        /** The folder being synced, while running. */
+        val folderId: String?,
+        /** "Music, 1 of 2 folders" while running; "Finished at 10:42" when done. */
+        val heading: String,
+        /** How the folder's sync is going (TransferProgress), or what each folder's did. */
+        val detail: String,
+    ) {
+        val text get() = if (detail.isEmpty()) heading else "$heading\n$detail"
+    }
+
+    /** Null until an automatic sync has run since FastPlay started. */
+    var status: Status? = null
+        private set(value) {
+            field = value
+            for (listener in statusListeners.toList()) listener()
+        }
+
+    /** Told (on the main thread) when [status] changes: every second or so while it syncs, and when it is done. */
+    fun addStatusListener(listener: () -> Unit) = statusListeners.add(listener)
+    fun removeStatusListener(listener: () -> Unit) = statusListeners.remove(listener)
 
     fun runIfDue() {
         lastRun?.let { if (System.currentTimeMillis() - it < 30 * 60 * 1000L) return }
@@ -132,12 +160,15 @@ object AutoSync {
                 say(if (folders.size == 1) "Auto syncing ${folders[0].name}" else "Auto syncing ${folders.size} folders")
             }
             val summary = mutableListOf<String>()
-            for (folder in folders) {
+            for ((index, folder) in folders.withIndex()) {
+                val heading = if (folders.size == 1) folder.name else "${folder.name}, ${index + 1} of ${folders.size} folders"
+                status = Status(running = true, folderId = folder.id, heading = heading, detail = "Looking…")
                 val source = FileSources.source(folder.sourceId)
                 val outcome = if (source != null) {
                     try {
-                        FolderSync.run(source, folder.folder, sync = true, progress = {}, confirmDeleting = null)
-                            ?: "Stopped."
+                        FolderSync.run(source, folder.folder, sync = true, progress = { detail ->
+                            status = Status(running = true, folderId = folder.id, heading = heading, detail = detail)
+                        }, confirmDeleting = null) ?: "Stopped."
                     } catch (e: Exception) {
                         FolderSync.describe(e)
                     }
@@ -147,6 +178,9 @@ object AutoSync {
                 AutoSyncStore.record(folder.id, outcome)
                 summary.add("${folder.name}: $outcome")
             }
+            val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())
+            status = Status(running = false, folderId = null, heading = "Finished at $time",
+                detail = summary.joinToString("\n"))
             if (announce) say("Auto sync done. " + summary.joinToString(" "))
         } finally {
             running = false
@@ -167,12 +201,22 @@ object FolderSync {
      * Download leaves alone what is already here. Sync makes the folder here match
      * the one there: files that changed are fetched again, and files here that are
      * no longer there are deleted, after [confirmDeleting] says yes (with none
-     * given, without asking). [progress] is told of each step. The outcome, in
-     * words; null if deleting was refused, in which case nothing was done.
+     * given, without asking). [progress] is told where it has got, as it goes and
+     * every second: the file, how much of it has come and how fast, and how long
+     * the rest will take (TransferProgress). The outcome, in words; null if
+     * deleting was refused, in which case nothing was done.
      */
     suspend fun run(
         source: FileSource, entry: FileEntry, sync: Boolean,
         progress: (String) -> Unit,
+        confirmDeleting: (suspend (Int, String) -> Boolean)?,
+    ): String? {
+        val transfer = TransferProgress(progress)
+        return transfer.run { run(source, entry, sync, transfer, confirmDeleting) }
+    }
+
+    private suspend fun run(
+        source: FileSource, entry: FileEntry, sync: Boolean, transfer: TransferProgress,
         confirmDeleting: (suspend (Int, String) -> Boolean)?,
     ): String? {
         val documents = File(Engine.documentsPath)
@@ -203,25 +247,27 @@ object FolderSync {
             if (!confirmDeleting(stale.size, entry.name)) return null
         }
 
-        var fetched = 0
+        // What to fetch, first, so that the time left can be told
         var kept = 0
-        for ((index, item) in wanted.withIndex()) {
-            currentCoroutineContext().ensureActive()
-            val (file, destination) = item
-            progress("${index + 1} of ${wanted.size}: ${destination.name}")
-            val exists = withContext(Dispatchers.IO) { destination.exists() }
-            if (exists) {
+        val fetching = withContext(Dispatchers.IO) {
+            wanted.filter { (file, destination) ->
+                if (!destination.exists()) return@filter true
                 // Download keeps what is here. Sync fetches it again if the
                 // one there is another size, or changed after this copy was made.
                 val localSize = destination.length()
                 val localDate = destination.lastModified()
                 val changed = (file.size > 0 && localSize != file.size) ||
                     (file.modified?.let { it > localDate + 1000 } ?: false)
-                if (!sync || !changed) {
-                    kept += 1
-                    continue
-                }
+                (sync && changed).also { if (!it) kept += 1 }
             }
+        }
+        transfer.total = fetching.sumOf { maxOf(0, it.first.size) }
+
+        var fetched = 0
+        for ((index, item) in fetching.withIndex()) {
+            currentCoroutineContext().ensureActive()
+            val (file, destination) = item
+            transfer.file("${index + 1} of ${fetching.size}: ${destination.name}", file.size)
             withContext(Dispatchers.IO) { destination.parentFile?.mkdirs() }
             source.download(file, destination)
             // Dated as it is there, so a later sync can tell if it changed

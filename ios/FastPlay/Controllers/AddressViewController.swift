@@ -164,6 +164,8 @@ final class AddressViewController: FastPlayTableViewController, UITextFieldDeleg
 
     override func tableView(_ tableView: UITableView,
                             trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        // VoiceOver lists swipe actions along with the row's own, which have these already
+        if UIAccessibility.isVoiceOverRunning { return nil }
         guard indexPath.section == 1 else { return nil }
         return UISwipeActionsConfiguration(actions: [
             UIContextualAction(style: .destructive, title: "Remove") { [weak self] _, _, done in

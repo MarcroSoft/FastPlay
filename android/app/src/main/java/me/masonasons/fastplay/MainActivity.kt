@@ -13,6 +13,7 @@ import android.view.Gravity
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
@@ -28,7 +29,6 @@ import me.masonasons.fastplay.dropbox.DropboxClient
 import me.masonasons.fastplay.engine.Engine
 import me.masonasons.fastplay.files.AutoSync
 import me.masonasons.fastplay.files.FolderResume
-import me.masonasons.fastplay.ui.DirectTouchGate
 import me.masonasons.fastplay.ui.Dialogs
 import me.masonasons.fastplay.ui.HomeScreen
 import me.masonasons.fastplay.ui.PlayerScreen
@@ -52,7 +52,10 @@ class MainActivity : AppCompatActivity() {
     /** Files opened from other apps, kept open for as long as FastPlay runs (see openIncoming). */
     private val openFiles = mutableListOf<ParcelFileDescriptor>()
 
-    private val stateListener: () -> Unit = { updateBottom() }
+    private val stateListener: () -> Unit = {
+        updateBottom()
+        applyKeepScreenOn()
+    }
     private val messageListener: (String, String) -> Unit = { title, text -> Dialogs.tell(this, title, text) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -66,6 +69,7 @@ class MainActivity : AppCompatActivity() {
         }
         Engine.addStateListener(stateListener)
         Engine.addMessageListener(messageListener)
+        applyKeepScreenOn()
         if (!Engine.startedOk) Dialogs.tell(this, "FastPlay", "FastPlay could not start its audio engine.")
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -73,14 +77,12 @@ class MainActivity : AppCompatActivity() {
             // For the media notification: play and pause from the lock screen and the shade
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        DirectTouchGate.attach(this)
         if (savedInstanceState == null) handle(intent)
     }
 
     override fun onDestroy() {
         Engine.removeStateListener(stateListener)
         Engine.removeMessageListener(messageListener)
-        DirectTouchGate.detach(this)
         super.onDestroy()
     }
 
@@ -102,6 +104,12 @@ class MainActivity : AppCompatActivity() {
         super.onStart()
         AutoSync.runIfDue()
         if (Engine.playing) Engine.ensureDeviceRunning()
+    }
+
+    /** Keep Screen On: the window's flag, which holds only while it is in front. */
+    private fun applyKeepScreenOn() {
+        if (Engine.keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     private fun buildWindow() {

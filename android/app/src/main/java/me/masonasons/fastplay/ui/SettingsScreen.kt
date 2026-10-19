@@ -183,9 +183,13 @@ class SettingsScreen : SettingsPageScreen("Settings", {
                         toggle("Prevent Clipping", "replayGainPreventClip"),
                     )),
                     SettingSection("This Device",
-                        "On, FastPlay plays alongside other apps instead of stopping them. " +
-                            "The lock screen and headphone controls then go to the other app.",
-                        listOf(SettingRow.Toggle("Mix With Others", { Engine.mixWithOthers }, { Engine.mixWithOthers = it })),
+                        "With Mix With Others on, FastPlay plays alongside other apps instead of stopping them, " +
+                            "and the lock screen and headphone controls go to the other app. With Keep Screen On on, " +
+                            "the screen does not dim and lock by itself while FastPlay is in front.",
+                        listOf(
+                            SettingRow.Toggle("Mix With Others", { Engine.mixWithOthers }, { Engine.mixWithOthers = it }),
+                            SettingRow.Toggle("Keep Screen On", { Engine.keepScreenOn }, { Engine.keepScreenOn = it }),
+                        ),
                     ),
                 )
             },

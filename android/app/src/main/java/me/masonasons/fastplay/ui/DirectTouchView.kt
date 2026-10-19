@@ -13,6 +13,7 @@ import android.widget.TextView
 import androidx.core.view.AccessibilityDelegateCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import me.masonasons.fastplay.R
 import kotlin.math.abs
 import kotlin.math.hypot
 
@@ -28,10 +29,10 @@ import kotlin.math.hypot
  *   two fingers up or down       the parameter up or down
  *   two finger tap               play or pause
  *
- * With BackTalk's direct touch (DirectTouchGate) the touches come straight here
- * while a screen reader runs, and FastPlay says what each one did. Under plain
- * TalkBack, which passes no touches through, the same commands are this area's
- * actions in TalkBack's actions menu.
+ * With BackTalk's direct touch regions (offered to BackTalk, not in it yet) the
+ * touches would come straight here while a screen reader runs, and FastPlay says
+ * what each one did. Under TalkBack, which passes no touches through, the same
+ * commands are this area's actions in TalkBack's actions menu.
  */
 @SuppressLint("ViewConstructor")
 class DirectTouchView(context: Context) : LinearLayout(context) {
@@ -95,12 +96,12 @@ class DirectTouchView(context: Context) : LinearLayout(context) {
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
         for (i in 0 until childCount) getChildAt(i).importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         contentDescription = "Touch controls"
+        // For BackTalk: the ID that marks a view as taking touches directly (its direct touch regions)
+        id = R.id.dev_nvgt_direct_touch_region
         ViewCompat.setAccessibilityDelegate(this, object : AccessibilityDelegateCompat() {
             override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
                 super.onInitializeAccessibilityNodeInfo(host, info)
                 info.hintText = hintText
-                // For BackTalk: this area takes touches directly (its direct touch regions)
-                info.extras.putBoolean(DirectTouchGate.REGION_EXTRA, true)
             }
         })
         val commands = listOf(

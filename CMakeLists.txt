@@ -137,6 +137,10 @@ FetchContent_GetProperties(miniaudio)
 if(NOT miniaudio_POPULATED)
     FetchContent_Populate(miniaudio)  # the header only; not its own build
 endif()
+# Keep the fetched source pristine; use our Core Audio stereo-routing fix in a
+# generated copy until miniaudio honors the device's preferred stereo channels.
+set(FASTPLAY_MINIAUDIO_DIR "${CMAKE_CURRENT_BINARY_DIR}/fastplay-miniaudio")
+include(cmake/miniaudio.cmake)
 
 # --- SpessaSynth ---
 # MIDI playback with SoundFonts (SF2) and DLS: kode54's C port of SpessaSynth.
@@ -463,7 +467,7 @@ target_include_directories(FastPlay PRIVATE
     include
     include/fastplay
     ${FASTPLAY_FFMPEG_DIR}/include
-    ${miniaudio_SOURCE_DIR}
+    ${FASTPLAY_MINIAUDIO_DIR}
     deps/speedy
     deps/sonic
     deps/kissfft

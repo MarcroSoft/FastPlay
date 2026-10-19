@@ -40,8 +40,14 @@ class FileOperations(
     private val isMove: Boolean,
     /** Asked about a name already taken: what is being pasted and what is there. Null stops the paste. */
     private val resolver: suspend (pasting: FileEntry, existing: FileEntry) -> Choice?,
-    private val progress: (name: String, done: Int) -> Unit,
+    /**
+     * Where the paste has got, in words, as it goes and every second
+     * (TransferProgress): the file, how much of it has come and how fast.
+     */
+    progress: (String) -> Unit,
 ) {
+    private val transfer = TransferProgress(progress)
+
     enum class Resolution(val title: String) {
         REPLACE("Replace"),
         /** Only if the one being pasted is newer or another size. */
@@ -71,7 +77,7 @@ class FileOperations(
     private val temporary = File(FastPlayApp.instance.cacheDir, "Pasting-${UUID.randomUUID()}")
 
     /** Pastes [items] into [folder] of [destination]. */
-    suspend fun paste(items: List<FileClipboard.Item>, destination: FileSource, folder: String) {
+    suspend fun paste(items: List<FileClipboard.Item>, destination: FileSource, folder: String) = transfer.run {
         try {
             val there = names(destination, folder)
             for (item in items) {
@@ -218,11 +224,13 @@ class FileOperations(
         source: FileSource, entry: FileEntry, destination: FileSource, folder: String, name: String,
         there: MutableMap<String, FileEntry>,
     ) {
-        progress(name, filesDone)
+        val heading = "${filesDone + 1}: $name"
         val target = destination.path(name, folder)
         if (source.isLocal && destination is LocalSource) {
+            transfer.file(heading, entry.size, counted = false)
             destination.copy(File(entry.path), File(target))
         } else {
+            transfer.file(heading, entry.size)
             // By way of this device
             var file = File(entry.path)
             var holder: File? = null
@@ -230,9 +238,12 @@ class FileOperations(
                 if (!source.isLocal) {
                     holder = File(temporary, UUID.randomUUID().toString()).apply { mkdirs() }
                     file = File(holder, entry.name)
+                    transfer.step("Downloading")
                     source.download(entry, file)
                 }
                 currentCoroutineContext().ensureActive()
+                // Into this device it's a copy, which isn't counted
+                if (!destination.isLocal) transfer.step("Uploading")
                 destination.upload(file, name, folder)
             } finally {
                 holder?.deleteRecursively()

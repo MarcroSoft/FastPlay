@@ -5,6 +5,7 @@ import UIKit
 final class AutoSyncViewController: UITableViewController {
     private var folders = AutoSyncStore.all
     private var observer: NSObjectProtocol?
+    private var statusObserver: NSObjectProtocol?
 
     init() {
         super.init(style: .insetGrouped)
@@ -15,6 +16,7 @@ final class AutoSyncViewController: UITableViewController {
 
     deinit {
         if let observer { NotificationCenter.default.removeObserver(observer) }
+        if let statusObserver { NotificationCenter.default.removeObserver(statusObserver) }
     }
 
     override func viewDidLoad() {
@@ -23,6 +25,17 @@ final class AutoSyncViewController: UITableViewController {
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
         observer = NotificationCenter.default.addObserver(forName: .autoSyncDidFinish, object: nil, queue: .main) { [weak self] _ in
             self?.reload()
+        }
+        // The folder syncing now, brought up to date where it is, so VoiceOver stays where it was
+        statusObserver = NotificationCenter.default.addObserver(forName: .autoSyncStatusDidChange, object: nil,
+                                                                queue: .main) { [weak self] _ in
+            guard let self, AutoSync.status?.running == true else { return }
+            // With how the folders before it went
+            let folders = AutoSyncStore.all
+            guard folders.map(\.id) == self.folders.map(\.id),
+                  self.tableView.numberOfRows(inSection: 0) == folders.count else { return self.reload() }
+            self.folders = folders
+            self.tableView.reconfigureRows(at: self.folders.indices.map { IndexPath(row: $0, section: 0) })
         }
     }
 
@@ -53,7 +66,9 @@ final class AutoSyncViewController: UITableViewController {
 
     private func detail(for folder: AutoSyncFolder) -> String {
         var lines = ["\(FileSources.title(id: folder.sourceID)): \(folder.displayPath.isEmpty ? "/" : folder.displayPath)"]
-        if let date = folder.lastSynced {
+        if let status = AutoSync.status, status.running, status.folderID == folder.id {
+            lines.append("Syncing now.\n\(status.detail)")
+        } else if let date = folder.lastSynced {
             let when = DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
             lines.append("Last synced \(when). \(folder.lastOutcome ?? "")")
         } else {
@@ -99,7 +114,9 @@ final class AutoSyncViewController: UITableViewController {
 
     override func tableView(_ tableView: UITableView,
                             trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        UISwipeActionsConfiguration(actions: [
+        // VoiceOver lists swipe actions along with the row's own, which have these already
+        if UIAccessibility.isVoiceOverRunning { return nil }
+        return UISwipeActionsConfiguration(actions: [
             UIContextualAction(style: .destructive, title: "Remove") { [weak self] _, _, done in
                 self?.remove(at: indexPath.row)
                 done(true)

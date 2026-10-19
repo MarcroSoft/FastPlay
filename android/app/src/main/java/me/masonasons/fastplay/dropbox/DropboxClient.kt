@@ -24,6 +24,7 @@ import me.masonasons.fastplay.files.FileEntry
 import me.masonasons.fastplay.files.FileOperations
 import me.masonasons.fastplay.files.FileSource
 import me.masonasons.fastplay.files.RemoteError
+import me.masonasons.fastplay.files.TransferMeter
 import me.masonasons.fastplay.remote.Keychain
 import me.masonasons.fastplay.ui.Dialogs
 import me.masonasons.fastplay.ui.Screen
@@ -310,6 +311,7 @@ object DropboxClient : FileSource {
     suspend fun download(path: String, destination: File) {
         val token = validAccessToken()
         withContext(Dispatchers.IO) {
+            val meter = TransferMeter.current()
             val connection = open("https://content.dropboxapi.com/2/files/download")
             try {
                 connection.setRequestProperty("Authorization", "Bearer $token")
@@ -334,6 +336,7 @@ object DropboxClient : FileSource {
                                 val count = input.read(chunk)
                                 if (count < 0) break
                                 output.write(chunk, 0, count)
+                                meter?.add(count)
                             }
                         }
                     }
@@ -387,6 +390,8 @@ object DropboxClient : FileSource {
                     connection.outputStream.use { it.write(body.data) }
                 }
                 is Body.Part -> {
+                    // A file's bytes count for the speed shown
+                    val meter = TransferMeter.current()
                     connection.setFixedLengthStreamingMode(body.length)
                     connection.outputStream.use { output ->
                         RandomAccessFile(body.file, "r").use { input ->
@@ -399,6 +404,7 @@ object DropboxClient : FileSource {
                                 if (count < 0) throw IOException("${body.file.name} ended early.")
                                 output.write(chunk, 0, count)
                                 left -= count
+                                meter?.add(count)
                             }
                         }
                     }

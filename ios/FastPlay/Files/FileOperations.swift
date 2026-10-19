@@ -65,11 +65,13 @@ final class FileOperations {
     /// Asked about a name already taken: what is being pasted and what is there.
     /// Nil stops the paste.
     typealias Resolver = @MainActor (_ pasting: FileEntry, _ existing: FileEntry) async -> Choice?
-    typealias Progress = @MainActor (_ name: String, _ done: Int) -> Void
+    /// Where the paste has got, in words, as it goes and every second
+    /// (TransferProgress): the file, how much of it has come and how fast.
+    typealias Progress = @MainActor (String) -> Void
 
     private let isMove: Bool
     private let resolver: Resolver
-    private let progress: Progress
+    private let transfer: TransferProgress
     private var rememberedFile: Resolution?
     private var rememberedFolder: Resolution?
     private(set) var filesDone = 0
@@ -78,7 +80,7 @@ final class FileOperations {
     init(move: Bool, resolver: @escaping Resolver, progress: @escaping Progress) {
         isMove = move
         self.resolver = resolver
-        self.progress = progress
+        transfer = TransferProgress(report: progress)
     }
 
     struct Stopped: Error {}
@@ -86,16 +88,21 @@ final class FileOperations {
     /// Pastes `items` into `folder` of `destination`.
     func paste(_ items: [FileClipboard.Item], into destination: FileSource, folder: String) async throws {
         defer { try? FileManager.default.removeItem(at: temporary) }
-        var there = try await names(in: destination, folder: folder)
-        for item in items {
-            try Task.checkCancellation()
-            if item.source.id == destination.id, item.entry.isFolder,
-               Self.same(folder, item.entry.path) || Self.isBelow(folder, item.entry.path) {
-                throw RemoteError.failed("\(item.entry.name) cannot go inside itself.")
+        try await transfer.run {
+            var there = try await names(in: destination, folder: folder)
+            for item in items {
+                try Task.checkCancellation()
+                if item.source.id == destination.id, item.entry.isFolder,
+                   Self.same(folder, item.entry.path) || Self.isBelow(folder, item.entry.path) {
+                    throw RemoteError.failed("\(item.entry.name) cannot go inside itself.")
+                }
+                // Cut and pasted where it already is: nothing to do
+                if isMove, item.source.id == destination.id, Self.same(Self.parent(of: item.entry.path), folder) {
+                    continue
+                }
+                try await process(item.source, item.entry, into: destination, folder: folder, there: &there,
+                                  cascade: nil)
             }
-            // Cut and pasted where it already is: nothing to do
-            if isMove, item.source.id == destination.id, Self.same(Self.parent(of: item.entry.path), folder) { continue }
-            try await process(item.source, item.entry, into: destination, folder: folder, there: &there, cascade: nil)
         }
     }
 
@@ -238,11 +245,13 @@ final class FileOperations {
 
     private func copyFile(_ source: FileSource, _ entry: FileEntry, into destination: FileSource, folder: String,
                           as name: String, there: inout [String: FileEntry]) async throws {
-        progress(name, filesDone)
+        let heading = "\(filesDone + 1): \(name)"
         let target = destination.path(of: name, in: folder)
         if source.isLocal, let local = destination as? LocalSource {
+            transfer.file(heading, size: entry.size, counted: false)
             try await local.copy(from: URL(fileURLWithPath: entry.path), to: URL(fileURLWithPath: target))
         } else {
+            transfer.file(heading, size: entry.size)
             // By way of this device
             var file = URL(fileURLWithPath: entry.path)
             var downloaded = false
@@ -251,11 +260,14 @@ final class FileOperations {
                 let holder = temporary.appendingPathComponent(UUID().uuidString)
                 try manager.createDirectory(at: holder, withIntermediateDirectories: true)
                 file = holder.appendingPathComponent(entry.name)
+                transfer.step("Downloading")
                 try await source.download(entry, to: file)
                 downloaded = true
             }
             defer { if downloaded { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) } }
             try Task.checkCancellation()
+            // Into this device it's a copy, which isn't counted
+            if !destination.isLocal { transfer.step("Uploading") }
             try await destination.upload(file, named: name, to: folder)
         }
         there[name.lowercased()] = destination.entry(named: name, in: folder, isFolder: false, size: entry.size)

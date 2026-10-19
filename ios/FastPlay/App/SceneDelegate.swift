@@ -12,6 +12,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.rootViewController = navigation
         window.makeKeyAndVisible()
         self.window = window
+        KeepScreenOn.apply()
 
         // What the engine has to tell the user (a file that will not play, say)
         messageObserver = NotificationCenter.default.addObserver(

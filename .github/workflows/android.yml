@@ -115,9 +115,15 @@ jobs:
           if-no-files-found: error
 
       # Only a signed build goes out: one signed with a debug key could not be
-      # updated by the next
+      # updated by the next. build.yml recreates the release on every push, so
+      # it may be gone for a moment: tried again a few times.
       - name: Attach the APK to the latest release
         if: github.event_name == 'push' && github.ref == 'refs/heads/master' && env.SIGNED == '1'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload latest android/app/build/outputs/apk/release/FastPlay.apk --clobber
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            gh release upload latest android/app/build/outputs/apk/release/FastPlay.apk --clobber && exit 0
+            sleep 30
+          done
+          exit 1

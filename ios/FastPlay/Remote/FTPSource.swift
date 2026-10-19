@@ -89,9 +89,12 @@ final class FTPSource: FileSource {
     func download(_ entry: FileEntry, to destination: URL) async throws {
         let url = address(entry.path)
         let stop = StopFlag()
+        // Off the task, so taken along
+        let meter = TransferMeter.current
         try await withTaskCancellationHandler {
             try await Self.offMainThread {
-                try FPRemote.copy(url: url, toFile: destination.path) { stop.isSet }
+                try FPRemote.copy(url: url, toFile: destination.path, shouldStop: { stop.isSet },
+                                  copied: { meter?.add($0) })
             }
         } onCancel: {
             stop.isSet = true

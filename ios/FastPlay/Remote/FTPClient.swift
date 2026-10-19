@@ -77,6 +77,7 @@ final class FTPClient {
             try Task.checkCancellation()
             guard let chunk = try handle.read(upToCount: 64 * 1024), !chunk.isEmpty else { break }
             try await Self.send(chunk, on: data)
+            TransferMeter.current?.add(chunk.count)
         }
         // The end of the file is the end of the connection
         try await Self.send(nil, on: data, final: true)

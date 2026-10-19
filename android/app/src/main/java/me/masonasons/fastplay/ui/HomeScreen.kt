@@ -1,5 +1,6 @@
 package me.masonasons.fastplay.ui
 
+import android.os.Bundle
 import android.text.format.Formatter
 import androidx.annotation.DrawableRes
 import androidx.lifecycle.lifecycleScope
@@ -8,12 +9,18 @@ import me.masonasons.fastplay.R
 import me.masonasons.fastplay.address.AddressScreen
 import me.masonasons.fastplay.dropbox.DropboxCancelled
 import me.masonasons.fastplay.dropbox.DropboxClient
+import me.masonasons.fastplay.engine.Engine
+import me.masonasons.fastplay.files.AutoSync
+import me.masonasons.fastplay.files.AutoSyncScreen
 import me.masonasons.fastplay.files.BrowserScreen
 import me.masonasons.fastplay.files.Favorite
 import me.masonasons.fastplay.files.FavoritesStore
+import me.masonasons.fastplay.files.FileClipboard
 import me.masonasons.fastplay.files.FileSource
 import me.masonasons.fastplay.files.FileSources
 import me.masonasons.fastplay.files.LocalSource
+import me.masonasons.fastplay.files.Pasting
+import me.masonasons.fastplay.files.StorageAccess
 import me.masonasons.fastplay.podcasts.PodcastsScreen
 import me.masonasons.fastplay.radio.RadioScreen
 import me.masonasons.fastplay.remote.ServersScreen
@@ -44,6 +51,18 @@ class HomeScreen : ListScreen() {
     private var favorites: List<Favorite> = emptyList()
     /** Free space, for the Files and Dropbox rows, once known */
     private val space = mutableMapOf<String, String>()
+    // The Auto Sync row, brought up to date where it is, so TalkBack stays where it was
+    private val syncChanged: () -> Unit = { if (view != null) reload() }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        AutoSync.addStatusListener(syncChanged)
+    }
+
+    override fun onDestroy() {
+        AutoSync.removeStatusListener(syncChanged)
+        super.onDestroy()
+    }
 
     override fun onResume() {
         favorites = FavoritesStore.all
@@ -97,6 +116,22 @@ class HomeScreen : ListScreen() {
         if (source.id == DropboxClient.id) withDropbox(browse) else browse()
     }
 
+    /** What is on the clipboard pasted into FastPlay's own folder, from here. */
+    private fun pasteIntoFiles() = StorageAccess.ensure(this) {
+        Pasting.pasteClipboard(this, Engine.documentsPath, LocalSource) {
+            reload()
+            updateSpace()
+        }
+    }
+
+    /** What is on the clipboard pasted into a favorite folder, from here. */
+    private fun paste(into: Favorite) {
+        val source = FileSources.source(into.sourceId)
+            ?: return tell(into.name, "The server it was on has been deleted.")
+        val paste = { Pasting.pasteClipboard(this, into.folder.path, source) { reload() } }
+        if (source.id == DropboxClient.id) withDropbox(paste) else paste()
+    }
+
     private fun remove(favorite: Favorite) {
         FavoritesStore.remove(favorite)
         favorites = FavoritesStore.all
@@ -110,12 +145,28 @@ class HomeScreen : ListScreen() {
         icon = item.icon,
         disclosure = true,
         id = item.title,
+        actions = if (item.title == "Files" && FileClipboard.items.isNotEmpty()) {
+            listOf(RowAction("${Pasting.title} Into FastPlay's Folder") { pasteIntoFiles() })
+        } else {
+            emptyList()
+        },
         onClick = { item.action(this) },
     )
 
     override fun rows(): List<ListRow> {
         val rows = mutableListOf<ListRow>()
         rows += places.map { row(it) }
+        AutoSync.status?.let { status ->
+            rows += ListRow.Header("Auto Sync")
+            rows += ListRow.Item(
+                title = if (status.running) "Syncing" else "Done",
+                subtitle = status.text,
+                icon = R.drawable.ic_sync,
+                disclosure = true,
+                id = "autoSync",
+                onClick = { push(AutoSyncScreen()) },
+            )
+        }
         if (favorites.isNotEmpty()) {
             rows += ListRow.Header("Favorites")
             rows += favorites.map { favorite ->
@@ -125,12 +176,17 @@ class HomeScreen : ListScreen() {
                     icon = R.drawable.ic_star,
                     disclosure = true,
                     id = "favorite:${favorite.id}",
-                    actions = listOf(RowAction("Remove from Favorites", destructive = true) { remove(favorite) }),
+                    actions = listOfNotNull(
+                        RowAction("${Pasting.title} Into Folder") { paste(into = favorite) }.takeIf {
+                            FileClipboard.items.isNotEmpty() && FileSources.source(favorite.sourceId)?.canWrite == true
+                        },
+                        RowAction("Remove from Favorites", destructive = true) { remove(favorite) },
+                    ),
                     onClick = { open(favorite) },
                 )
             }
-            rows += ListRow.Header("")
         }
+        if (AutoSync.status != null || favorites.isNotEmpty()) rows += ListRow.Header("")
         rows += row(settings)
         return rows
     }

@@ -78,7 +78,11 @@ NSError* ErrorFor(int code, NSString* what) {
     return items;
 }
 
-+ (BOOL)copyURL:(NSString*)url toFile:(NSString*)path shouldStop:(BOOL (^)(void))shouldStop error:(NSError**)error {
++ (BOOL)copyURL:(NSString*)url
+         toFile:(NSString*)path
+     shouldStop:(BOOL (^)(void))shouldStop
+         copied:(void (^)(NSInteger count))copied
+          error:(NSError**)error {
     AVDictionary* options = nullptr;
     av_dict_set(&options, "timeout", kTimeout, 0);
     AVIOContext* source = nullptr;
@@ -114,6 +118,7 @@ NSError* ErrorFor(int code, NSString* what) {
             if (error) *error = ErrorFor(AVERROR(errno), @"Could not write the file here:");
             break;
         }
+        copied(n);
     }
     fclose(file);
     avio_closep(&source);
