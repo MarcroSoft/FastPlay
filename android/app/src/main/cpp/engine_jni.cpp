@@ -52,6 +52,7 @@ void PostStateChange() {
     g_stateChangePending = true;
     PostToUi([]() {
         g_stateChangePending = false;
+        if (g_started) KeepPlaceSaved();  // a pause saves at once
         JNIEnv* env = Env();
         static jmethodID changed = CallbackMethod("stateChanged", "()V");
         env->CallStaticVoidMethod(Callbacks(), changed);
@@ -189,6 +190,12 @@ JNI(void, saveState)(JNIEnv*, jclass) {
     SaveCurrentPosition();
     SavePlaybackState();
     SaveSettings();
+}
+
+// Twice a second while playing: where playback is, every half minute (an update or
+// the system ends the app without warning).
+JNI(void, keepPlaceSaved)(JNIEnv*, jclass) {
+    if (g_started) KeepPlaceSaved();
 }
 
 JNI(jboolean, ensureDeviceRunning)(JNIEnv*, jclass) {

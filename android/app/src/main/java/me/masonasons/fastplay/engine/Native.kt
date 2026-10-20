@@ -21,6 +21,7 @@ object Native {
     // ---- The engine (engine_jni.cpp) ----
     @JvmStatic external fun start(): Boolean
     @JvmStatic external fun saveState()
+    @JvmStatic external fun keepPlaceSaved()
     @JvmStatic external fun ensureDeviceRunning(): Boolean
     @JvmStatic external fun checkScheduledEvents()
     @JvmStatic external fun durationTimerFired()

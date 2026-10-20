@@ -132,6 +132,9 @@ void CloseDatabase();
 // File position operations
 void SaveFilePositionDB(const std::wstring& filePath, double position);
 double LoadFilePositionDB(const std::wstring& filePath);
+// Every path starting with `from` made to start with `to` instead (positions,
+// bookmarks, scheduled events): for files that moved, folder and all
+void MoveFilePathsDB(const std::wstring& from, const std::wstring& to);
 
 // Bookmark operations
 int AddBookmark(const std::wstring& filePath, double position);

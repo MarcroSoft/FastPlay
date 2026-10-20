@@ -97,6 +97,9 @@ object Engine {
     /** Saves the settings, the playlist and where playback is (going to the background). */
     fun saveState() = Native.saveState()
 
+    /** Where playback is, saved every half minute: call it while playing. */
+    fun keepPlaceSaved() = Native.keepPlaceSaved()
+
     /** Coming back to the app with something playing: the output going again. */
     fun ensureDeviceRunning() = Native.ensureDeviceRunning()
 

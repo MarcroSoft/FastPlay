@@ -205,6 +205,32 @@ void SaveFilePositionDB(const std::wstring& filePath, double position) {
     }
 }
 
+// Files under one folder now under another: their positions, bookmarks and
+// scheduled events go with them
+void MoveFilePathsDB(const std::wstring& from, const std::wstring& to) {
+    if (!g_db || from.empty() || from == to) return;
+
+    std::string fromUtf8 = WideToUtf8(from);
+    std::string toUtf8 = WideToUtf8(to);
+    const char* statements[] = {
+        "UPDATE OR REPLACE file_positions SET path = ?2 || substr(path, length(?1) + 1) "
+        "WHERE substr(path, 1, length(?1)) = ?1;",
+        "UPDATE bookmarks SET path = ?2 || substr(path, length(?1) + 1) "
+        "WHERE substr(path, 1, length(?1)) = ?1;",
+        "UPDATE scheduled_events SET source_path = ?2 || substr(source_path, length(?1) + 1) "
+        "WHERE substr(source_path, 1, length(?1)) = ?1;",
+    };
+    for (const char* sql : statements) {
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(g_db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, fromUtf8.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, toUtf8.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
+        }
+    }
+}
+
 // Load file position from database
 double LoadFilePositionDB(const std::wstring& filePath) {
     if (!g_db) return 0.0;

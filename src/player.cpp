@@ -18,6 +18,7 @@
 #include <ctime>
 #include <filesystem>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -383,6 +384,29 @@ void AnnounceStreamMetadata() {
 
 bool IsPlaying() {
     return audio::GetState() == audio::State::Playing;
+}
+
+void KeepPlaceSaved() {
+    static bool wasPlaying = false;
+    static std::chrono::steady_clock::time_point lastSave;
+    static size_t savedPlaylist = 0;  // a hash of the playlist last saved whole
+
+    bool playing = IsPlaying();
+    auto now = std::chrono::steady_clock::now();
+    bool changed = playing != wasPlaying;
+    wasPlaying = playing;
+    if (!changed && (!playing || now - lastSave < std::chrono::seconds(30))) return;
+    lastSave = now;
+
+    SaveCurrentPosition();
+    size_t playlist = g_playlist.size();
+    for (const auto& path : g_playlist) playlist = playlist * 31 + std::hash<std::wstring>()(path);
+    if (changed || playlist != savedPlaylist) {
+        SavePlaybackState();
+        savedPlaylist = playlist;
+    } else {
+        SavePlaybackPlace();
+    }
 }
 
 // Play or pause current track

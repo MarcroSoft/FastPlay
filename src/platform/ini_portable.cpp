@@ -58,13 +58,24 @@ std::vector<std::string> ReadLines(const wchar_t* path) {
     return lines;
 }
 
+// Written beside the file and then put in its place, so an app ended part way
+// through (as a phone's can be, without warning) leaves the old file whole.
 bool WriteLines(const wchar_t* path, const std::vector<std::string>& lines) {
-    std::ofstream out(ToPath(path), std::ios::binary | std::ios::trunc);
-    if (!out) return false;
-    for (const auto& line : lines) {
-        out << line << "\n";
+    std::filesystem::path target = ToPath(path);
+    std::filesystem::path temp = target;
+    temp += ".new";
+    {
+        std::ofstream out(temp, std::ios::binary | std::ios::trunc);
+        if (!out) return false;
+        for (const auto& line : lines) {
+            out << line << "\n";
+        }
+        out.close();
+        if (!out) return false;
     }
-    return static_cast<bool>(out);
+    std::error_code error;
+    std::filesystem::rename(temp, target, error);
+    return !error;
 }
 
 // "[name]" -> name; empty if the line is not a section header.

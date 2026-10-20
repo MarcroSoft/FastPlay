@@ -14,6 +14,8 @@ void LoadDSPSettings();  // Call after InitEffects()
 
 // Playback state persistence
 void SavePlaybackState();
+// The current track and position alone, for a playlist SavePlaybackState saved
+void SavePlaybackPlace();
 void LoadPlaybackState();
 
 // Per-file position tracking

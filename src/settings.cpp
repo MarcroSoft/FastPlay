@@ -769,6 +769,19 @@ void SavePlaybackState() {
     }
 }
 
+// Only the track and where it is, for a playlist already saved: three writes
+// rather than one for every track.
+void SavePlaybackPlace() {
+    if (!g_rememberState) return;
+    if (g_currentTrack < 0 || g_currentTrack >= static_cast<int>(g_playlist.size())) return;
+    wchar_t buf[32];
+    swprintf(buf, 32, L"%d", g_currentTrack);
+    IniWriteString(L"State", L"CurrentTrack", buf, g_configPath.c_str());
+    IniWriteString(L"State", L"LastFile", g_playlist[g_currentTrack].c_str(), g_configPath.c_str());
+    swprintf(buf, 32, L"%.2f", GetCurrentPosition());
+    IniWriteString(L"State", L"LastPosition", buf, g_configPath.c_str());
+}
+
 // Load last playback state and resume if enabled
 void LoadPlaybackState() {
     if (!g_rememberState) return;

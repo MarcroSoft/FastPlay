@@ -43,6 +43,10 @@ double GetCurrentPosition();
 // Remember where the file playing is (Options: remember position), under its own
 // name. Done by itself whenever another file is loaded; at exit, call it.
 void SaveCurrentPosition();
+// For the phones, where the system can end the app without a word (an update, short
+// of memory): saves where playback is when it starts or stops, and every half minute
+// while it plays. Call it often; twice a second will do.
+void KeepPlaceSaved();
 
 // Seek modes (globals.h): slash cycles them; in spring and tape seeking, holding an
 // arrow scrubs (Start on the key going down, Stop on it coming up) and comma and

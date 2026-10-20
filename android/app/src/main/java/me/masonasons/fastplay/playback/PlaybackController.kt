@@ -52,6 +52,7 @@ object PlaybackController {
     private val tick = object : Runnable {
         override fun run() {
             update()
+            Engine.keepPlaceSaved()
             if (Engine.playing) main.postDelayed(this, 500)
         }
     }

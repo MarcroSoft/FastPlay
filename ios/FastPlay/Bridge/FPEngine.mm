@@ -106,19 +106,22 @@ void PostStateChange() {
 		// Publish transport changes without waiting for the position timer, which
 		// may stop running once a paused app is suspended in the background.
 		PublishNowPlaying();
+		KeepPlaceSaved();  // a pause saves at once, before the app is suspended
         [NSNotificationCenter.defaultCenter postNotificationName:FPEngineStateDidChangeNotification object:nil];
     });
 }
 
-// The app's container moves when the app is restored or reinstalled, and the
-// settings hold full paths (the playlist, remembered positions, recent files).
-// When it has moved, the old container's path in the settings becomes the new.
-void MoveSettingsToThisContainer() {
+// The app's container moves when the app is restored, reinstalled or updated, and
+// the settings and the database hold full paths (the playlist, recent files,
+// remembered positions, bookmarks). When it has moved, the old container's path in
+// the settings becomes the new; the old path comes back, for the database's once it
+// is open (nil if nothing moved).
+NSString* MoveSettingsToThisContainer() {
     NSString* home = NSHomeDirectory();
     NSString* dataDir = ToNS(GetDataDirectory());
     NSString* marker = [dataDir stringByAppendingPathComponent:@"container.txt"];
     NSString* before = [NSString stringWithContentsOfFile:marker encoding:NSUTF8StringEncoding error:nil];
-    if ([before isEqualToString:home]) return;
+    if ([before isEqualToString:home]) return nil;
     if (before.length > 0) {
         NSString* ini = [dataDir stringByAppendingPathComponent:@"FastPlay.ini"];
         NSString* text = [NSString stringWithContentsOfFile:ini encoding:NSUTF8StringEncoding error:nil];
@@ -128,6 +131,7 @@ void MoveSettingsToThisContainer() {
         }
     }
     [home writeToFile:marker atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    return before.length > 0 ? before : nil;
 }
 
 }  // namespace
@@ -215,7 +219,7 @@ void MoveSettingsToThisContainer() {
     if (_started) return YES;
     srand(static_cast<unsigned>(time(nullptr)));  // so the shuffle order differs between runs
     PlatformStartup();
-    MoveSettingsToThisContainer();
+    NSString* oldContainer = MoveSettingsToThisContainer();
     LoadSettings();
     // Recordings go in a folder of FastPlay's own files (set each time: the app's
     // container, and so the folder's full path, can move)
@@ -236,6 +240,10 @@ void MoveSettingsToThisContainer() {
         UpdateOutputGain();
     }
     InitDatabase();
+    if (oldContainer) {
+        MoveFilePathsDB(ToWide([oldContainer stringByAppendingString:@"/"]),
+                        ToWide([NSHomeDirectory() stringByAppendingString:@"/"]));
+    }
     InitEffects();
     LoadDSPSettings();
     InitSpeech();
@@ -281,6 +289,7 @@ void MoveSettingsToThisContainer() {
 }
 
 - (void)tick {
+	KeepPlaceSaved();  // an update ends the app without warning
 	if (!audio::IsLoaded()) return;
 	PublishNowPlaying();
 }
