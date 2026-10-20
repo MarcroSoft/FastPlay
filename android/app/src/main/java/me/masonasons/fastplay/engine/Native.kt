@@ -68,6 +68,9 @@ object Native {
     @JvmStatic external fun startScrubbing(direction: Int)
     @JvmStatic external fun stopScrubbing()
 
+    @JvmStatic external fun toggleReverse()
+    @JvmStatic external fun reverse(): Boolean
+    @JvmStatic external fun jumpToRandomPoint()
     @JvmStatic external fun toggleRecording()
     @JvmStatic external fun recording(): Boolean
 

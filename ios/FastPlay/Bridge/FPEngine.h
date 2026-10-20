@@ -112,6 +112,15 @@ typedef NS_ENUM(NSInteger, FPSeekMode) {
 - (void)startScrubbing:(NSInteger)direction;
 - (void)stopScrubbing;
 
+// ---- Reverse and random --------------------------------------------------------
+// Plays the file backward from here, or forward again; says which. Seeking
+// carries on in reverse; at the start it stops there, paused, and another file
+// loading ends it. Not for live streams.
+- (void)toggleReverse;
+@property (nonatomic, readonly) BOOL reverse;
+// Somewhere at random in the file, said as a time. Not for live streams.
+- (void)jumpToRandomPoint;
+
 // ---- Recording --------------------------------------------------------------
 // Records what is playing, as it is heard, into the Recordings folder of
 // FastPlay's files, until toggled again. Says so, and why not if it cannot.

@@ -190,6 +190,13 @@ bool TapeStop();
 // Called on the UI thread when a release or tape stop has wound down.
 void SetScrubEndHandler(std::function<void()> handler);
 
+// Playing in reverse: the source backward from what is heard now, through the
+// tempo processor and effects as usual. Seeking and scrubbing carry on in
+// reverse; reaching the start is the end of the track (the end handler), and
+// loading another ends it. Not for live streams.
+bool SetReverse(bool on);
+bool IsReverse();
+
 // Tempo in percent (0 = normal), pitch in semitones, rate as a multiplier that
 // changes speed and pitch together.
 void SetTempo(float percent);
@@ -277,6 +284,8 @@ public:
     void SetScrubSpeed(float speed);
     bool StopScrub();
     bool IsScrubbing();
+    bool SetReverse(bool on);
+    bool IsReverse();
     bool ReleaseScrub();
     bool TapeStop();
     void SetScrubEndHandler(std::function<void()> handler);

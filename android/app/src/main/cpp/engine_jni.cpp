@@ -121,6 +121,8 @@ void RunCommand(int command, int param) {
         case IDM_SEEK_INCREASE: ChangeSeekUnit(1); break;
         case IDM_SEEK_MODE: CycleSeekMode(); break;
         case IDM_PLAY_GOLIVE: GoLive(); break;
+        case IDM_PLAY_RANDOM: JumpToRandomPoint(); break;
+        case IDM_PLAY_REVERSE: ToggleReverse(); break;
         case IDM_PLAY_MUTE: ToggleMute(); break;
         case IDM_PLAY_REPEAT_TOGGLE: ToggleRepeatMode(); break;
         case IDM_EFFECT_PREV: CycleParam(-1); break;
@@ -324,7 +326,7 @@ JNI(jstring, statusText)(JNIEnv* env, jclass) {
     if (!audio::IsLoaded()) return ToJava(env, std::wstring());
     std::wstring text;
     switch (audio::GetState()) {
-        case audio::State::Playing: text = L"Playing"; break;
+        case audio::State::Playing: text = audio::IsReverse() ? L"Playing in reverse" : L"Playing"; break;
         case audio::State::Paused: text = L"Paused"; break;
         case audio::State::Stopped: text = L"Stopped"; break;
         default: break;
@@ -386,6 +388,22 @@ JNI(void, startScrubbing)(JNIEnv*, jclass, jint direction) { StartScrubbing(dire
 
 JNI(void, stopScrubbing)(JNIEnv*, jclass) {
     StopScrubbing();
+    PostStateChange();
+}
+
+// ---------------------------------------------------------------------------
+// Reverse and random
+// ---------------------------------------------------------------------------
+
+JNI(void, toggleReverse)(JNIEnv*, jclass) {
+    ToggleReverse();
+    PostStateChange();
+}
+
+JNI(jboolean, reverse)(JNIEnv*, jclass) { return audio::IsReverse() ? JNI_TRUE : JNI_FALSE; }
+
+JNI(void, jumpToRandomPoint)(JNIEnv*, jclass) {
+    JumpToRandomPoint();
     PostStateChange();
 }
 

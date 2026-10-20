@@ -1,4 +1,6 @@
 0.7.0
+Shift+V plays the file in reverse from where you are, with your effects, and again plays it forward. Seeking keeps going in reverse; at the start of the file it stops, paused. On the iPhone and Android, the player has a Reverse button.
+Playback > Jump to Random Point goes somewhere at random in the file and says where. It can be given a hotkey. On the iPhone and Android, the player has a Random Point button.
 iPhone and Android: pasting, downloading and syncing folders show how much of the file has come, how fast, and when syncing, how much there is in all and about how long the rest will take.
 iPhone and Android: while folders auto sync, the Home screen shows how it is going under Auto Sync, and what each folder's sync did once it finishes. Settings > Auto Sync shows it on the folder being synced.
 iPhone and Android: on the Home screen, Files has an action to paste what you cut or copied into FastPlay's own folder, and favorite folders have one to paste into them.

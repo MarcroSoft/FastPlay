@@ -224,6 +224,11 @@ struct Player::Impl {
     int64_t reverseFloor = 0;        // where reading backward stops (a frame of the source)
     std::vector<float> reverseTail;  // the overlap held back to crossfade with the next chunk
 
+    // Playing in reverse (UI thread, under mixMutex): the source read backward
+    // into the usual tempo processor and effects, from reverseFrom
+    bool playReverse = false;
+    double reverseFrom = 0;
+
     // Effects chain and tap
     std::mutex dspMutex;
     std::vector<Dsp> dsps;
@@ -839,6 +844,7 @@ bool Player::Load(std::unique_ptr<Decoder> decoder, TempoAlgorithm algorithm) {
         g.decoder = std::move(decoder);
         g.reverse = false;
     }
+    g.playReverse = false;
     g.seekRequested = false;
     ResetOutput(g);
     g.state = State::Paused;
@@ -867,6 +873,7 @@ void Player::Unload() {
         g.decoder.reset();
         g.reverse = false;
     }
+    g.playReverse = false;
     g.pcm.Clear();
     ResetOutput(g);
     g.live = false;
@@ -933,6 +940,9 @@ double Player::Position() {
     double seconds = g.scrub       ? g.scrub->PositionAt(g.played.load())
                      : g.processor ? g.processor->PositionAt(g.played.load())
                                    : 0.0;
+    // In reverse the processor counts forward from where it started, while the
+    // source goes back from there
+    if (!g.scrub && g.processor && g.playReverse) seconds = std::max(0.0, 2 * g.reverseFrom - seconds);
     return g.length > 0 ? std::min(seconds, g.length) : seconds;
 }
 
@@ -949,10 +959,12 @@ namespace {
 
 // Carries on from `seconds`: played normally (scrub null), or by the scrubber,
 // reading the source backward in chunks of `reverseChunkFrames` if that is not 0,
-// back as far as `floorSeconds`.
+// back as far as `floorSeconds`. Played normally while playing in reverse, it
+// carries on in reverse.
 bool Reposition(Engine& g, double seconds, std::unique_ptr<Scrubber> scrub, int reverseChunkFrames, double floorSeconds = 0) {
     if (g.length > 0) seconds = std::min(seconds, g.length);
     if (seconds < 0) seconds = 0;
+    if (!scrub && g.playReverse) reverseChunkFrames = g.sourceRate;  // a second at a time
     FadeOut(g, false);
     struct FadeBackIn {
         Engine& g;
@@ -973,6 +985,7 @@ bool Reposition(Engine& g, double seconds, std::unique_ptr<Scrubber> scrub, int 
         ok = g.seekOk;
     }
     g.scrub = std::move(scrub);
+    g.reverseFrom = seconds;
     if (g.processor && !g.scrub) g.processor->Restart(seconds);
     ResetOutput(g);
     g.decodeWake.notify_all();
@@ -1032,6 +1045,25 @@ bool Player::StopScrub() {
     double start, live;
     if (g.live && LiveRange(start, live)) at = std::clamp(at, start, live);
     return Reposition(g, at, nullptr, 0);
+}
+
+bool Player::SetReverse(bool on) {
+    Engine& g = *m;
+    if (!g.loaded || g.live || !g.decoder) return false;
+    if (on == g.playReverse) return true;
+    double at = Position();
+    {
+        std::lock_guard<std::mutex> mix(g.mixMutex);
+        g.playReverse = on;
+        // Scrubbing carries on as it was, and ends in the new direction
+        if (g.scrub) return true;
+    }
+    return Reposition(g, at, nullptr, 0);
+}
+
+bool Player::IsReverse() {
+    Engine& g = *m;
+    return g.loaded && g.playReverse;
 }
 
 bool Player::IsScrubbing() {
@@ -1217,6 +1249,8 @@ bool StartScrub(ScrubStyle style, int direction, float speed) { return DefaultPl
 void SetScrubSpeed(float speed) { return DefaultPlayer().SetScrubSpeed(speed); }
 bool StopScrub() { return DefaultPlayer().StopScrub(); }
 bool IsScrubbing() { return DefaultPlayer().IsScrubbing(); }
+bool SetReverse(bool on) { return DefaultPlayer().SetReverse(on); }
+bool IsReverse() { return DefaultPlayer().IsReverse(); }
 bool ReleaseScrub() { return DefaultPlayer().ReleaseScrub(); }
 bool TapeStop() { return DefaultPlayer().TapeStop(); }
 void SetScrubEndHandler(std::function<void()> handler) { return DefaultPlayer().SetScrubEndHandler(std::move(handler)); }

@@ -31,6 +31,12 @@ void SeekTracks(int tracks);
 void SeekToPosition(double seconds);
 // A live stream kept for rewinding (Options > Advanced): back to live
 void GoLive();
+// Playing the file backward from here, or forward again (Shift+V). Seeking and
+// scrubbing carry on in reverse; at the start of the file it stops there, paused,
+// and loading another file ends it too. Not for live streams.
+void ToggleReverse();
+// Somewhere at random in the file, said as a time. Not for live streams.
+void JumpToRandomPoint();
 // Whether live streams opened from now on are kept for rewinding (the settings)
 void ApplyLiveRewindSetting();
 double GetCurrentPosition();

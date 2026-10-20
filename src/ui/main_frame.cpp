@@ -223,6 +223,8 @@ void MainFrame::BuildMenuBar() {
     play->Append(IDM_SEEK_MODE, "Next Seek &Mode\t/");
     play->Append(IDM_PLAY_BEGINNING, "&Beginning\tHome");
     play->Append(IDM_PLAY_JUMPTOTIME, "&Jump to Time...\tJ");
+    play->Append(IDM_PLAY_RANDOM, "Jump to Ran&dom Point");
+    play->Append(IDM_PLAY_REVERSE, "Re&verse\tShift+V");
     play->Append(IDM_PLAY_GOLIVE, "Go to &Live\tL");
     play->AppendSeparator();
 #ifdef __WXOSX__
@@ -336,6 +338,7 @@ void MainFrame::BuildAccelerators() {
         {N, 'X', IDM_PLAY_PLAY},
         {N, 'C', IDM_PLAY_PAUSE},
         {N, 'V', IDM_PLAY_STOP},
+        {S, 'V', IDM_PLAY_REVERSE},
         {N, 'B', IDM_PLAY_NEXT},
         {N, 'H', IDM_PLAY_SHUFFLE},
         {N, 'E', IDM_PLAY_REPEAT_TOGGLE},
@@ -695,6 +698,8 @@ void MainFrame::RunCommand(int id, int param) {
         case IDM_SEEK_INCREASE: IsScrubSeekMode() ? ChangeScrubSpeed(1) : CycleSeekAmount(1); break;
         case IDM_SEEK_MODE: CycleSeekMode(); break;
         case IDM_PLAY_GOLIVE: GoLive(); break;
+        case IDM_PLAY_RANDOM: JumpToRandomPoint(); break;
+        case IDM_PLAY_REVERSE: ToggleReverse(); break;
         case IDM_PLAY_VOLUP: SetVolume(g_volume + g_volumeStep); break;
         case IDM_PLAY_VOLDOWN: SetVolume(g_volume - g_volumeStep); break;
         case IDM_PLAY_MUTE: ToggleMute(); break;
@@ -902,7 +907,7 @@ void MainFrame::UpdateStatus() {
 #endif
 
         switch (audio::GetState()) {
-            case audio::State::Playing: stateText = L"Playing"; break;
+            case audio::State::Playing: stateText = audio::IsReverse() ? L"Playing in reverse" : L"Playing"; break;
             case audio::State::Paused:  stateText = L"Paused"; break;
             case audio::State::Stopped: stateText = L"Stopped"; break;
             default: stateText = L""; break;

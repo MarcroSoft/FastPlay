@@ -21,6 +21,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <random>
 
 // Tag reading helpers (defined later in the file)
 static std::string GetMetadataTag(const char* tagName);
@@ -141,8 +142,20 @@ void SelectAudioDevice(int deviceIndex) {
 // MIDI playback settings (SoundFont, voices): used once MIDI plays again.
 void ApplyMidiSettings() {}
 
-// The track has played to its end: the next one, playing or not.
+static void JumpTo(double seconds);
+
+// The track has played to its end: the next one, playing or not. Played in
+// reverse, its start: forward again from there, paused.
 static void OnTrackEnd() {
+    if (audio::IsReverse()) {
+        audio::SetReverse(false);
+        JumpTo(0);
+        audio::Pause();
+        Speak("Start of file. Reverse off");
+        UpdateWindowTitle();
+        UpdateStatusBar();
+        return;
+    }
     if (g_autoAdvance || g_repeatMode != 0) {
         PostCommand(IDM_PLAY_NEXT, 0);
     } else {
@@ -655,6 +668,34 @@ static void FinishScrubbing() {
     }
     if (g_pausedBeforeScrub) audio::Pause();
     UpdateWindowTitle();
+    UpdateStatusBar();
+}
+
+void ToggleReverse() {
+    if (!audio::IsLoaded() || g_isLoading) return;
+    if (g_isLiveStream) {
+        Speak("A live stream can't play in reverse");
+        return;
+    }
+    const bool on = !audio::IsReverse();
+    if (!audio::SetReverse(on)) return;
+    // From the start there is nothing to go back through: from the end, then
+    if (on && audio::Position() < 0.5) JumpTo(audio::Length());
+    Speak(on ? "Reverse on" : "Reverse off");
+    UpdateWindowTitle();
+    UpdateStatusBar();
+}
+
+void JumpToRandomPoint() {
+    if (!audio::IsLoaded() || g_isLoading || g_isLiveStream) return;
+    const double length = audio::Length();
+    if (length <= 0) return;
+    // Anywhere but the last few seconds, which would only end the track
+    static std::mt19937 random{std::random_device{}()};
+    const double at = std::uniform_real_distribution<double>(0.0, std::max(0.0, length - 5.0))(random);
+    StopScrubbing();
+    JumpTo(at);
+    Speak(WideToUtf8(FormatTime(at)));
     UpdateStatusBar();
 }
 

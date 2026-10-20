@@ -171,6 +171,18 @@ object Engine {
     fun startScrubbing(direction: Int) = Native.startScrubbing(direction)
     fun stopScrubbing() = Native.stopScrubbing()
 
+    // ---- Reverse and random ----
+
+    /**
+     * Plays the file backward from here, or forward again; says which. Seeking
+     * carries on in reverse; at the start it stops there, paused, and another
+     * file loading ends it. Not for live streams.
+     */
+    fun toggleReverse() = Native.toggleReverse()
+    val reverse: Boolean get() = Native.reverse()
+    /** Somewhere at random in the file, said as a time. Not for live streams. */
+    fun jumpToRandomPoint() = Native.jumpToRandomPoint()
+
     // ---- Recording ----
 
     /**

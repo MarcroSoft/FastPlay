@@ -445,7 +445,7 @@ void MoveSettingsToThisContainer() {
     if (!audio::IsLoaded()) return @"";
     std::wstring text;
     switch (audio::GetState()) {
-        case audio::State::Playing: text = L"Playing"; break;
+        case audio::State::Playing: text = audio::IsReverse() ? L"Playing in reverse" : L"Playing"; break;
         case audio::State::Paused: text = L"Paused"; break;
         case audio::State::Stopped: text = L"Stopped"; break;
         default: break;
@@ -526,6 +526,20 @@ void MoveSettingsToThisContainer() {
 
 - (void)cycleSeekMode {
     CycleSeekMode();
+    PostStateChange();
+}
+
+// ---- Reverse and random --------------------------------------------------------
+
+- (void)toggleReverse {
+    ToggleReverse();
+    PostStateChange();
+}
+
+- (BOOL)reverse { return audio::IsReverse(); }
+
+- (void)jumpToRandomPoint {
+    JumpToRandomPoint();
     PostStateChange();
 }
 
@@ -778,6 +792,8 @@ void MoveSettingsToThisContainer() {
         case IDM_SEEK_INCREASE: [self changeSeekUnit:1]; break;
         case IDM_SEEK_MODE: CycleSeekMode(); break;
         case IDM_PLAY_GOLIVE: GoLive(); break;
+        case IDM_PLAY_RANDOM: JumpToRandomPoint(); break;
+        case IDM_PLAY_REVERSE: ToggleReverse(); break;
         case IDM_PLAY_MUTE: ToggleMute(); break;
         case IDM_PLAY_REPEAT_TOGGLE: ToggleRepeatMode(); break;
         case IDM_EFFECT_PREV: CycleParam(-1); break;

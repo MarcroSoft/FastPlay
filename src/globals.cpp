@@ -160,12 +160,14 @@ const HotkeyAction g_hotkeyActions[] = {
     {IDM_PLAY_PREV, L"Previous Track", L"PreviousTrack"},
     {IDM_PLAY_NEXT, L"Next Track", L"NextTrack"},
     {IDM_PLAY_GOLIVE, L"Go to Live (Rewound Live Stream)", L"GoLive"},
+    {IDM_PLAY_REVERSE, L"Toggle Reverse", L"ToggleReverse"},
     // Seeking
     {IDM_PLAY_SEEKBACK, L"Seek Backward", L"SeekBackward"},
     {IDM_PLAY_SEEKFWD, L"Seek Forward", L"SeekForward"},
     {IDM_SEEK_DECREASE, L"Previous Seek Unit (or Slower Scrubbing)", L"PreviousSeekUnit"},
     {IDM_SEEK_INCREASE, L"Next Seek Unit (or Faster Scrubbing)", L"NextSeekUnit"},
     {IDM_SEEK_MODE, L"Next Seek Mode", L"NextSeekMode"},
+    {IDM_PLAY_RANDOM, L"Jump to Random Point", L"JumpToRandomPoint"},
     {IDM_SPEAK_SEEK, L"Speak Seek Unit", L"SpeakSeekUnit"},
     // Volume
     {IDM_PLAY_VOLUP, L"Volume Up", L"VolumeUp"},

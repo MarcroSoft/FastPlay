@@ -58,6 +58,8 @@ class PlayerScreen : Screen() {
     private lateinit var playPauseButton: ImageButton
     private lateinit var nextButton: ImageButton
     private lateinit var recordButton: MaterialButton
+    private lateinit var randomButton: MaterialButton
+    private lateinit var reverseButton: MaterialButton
     private lateinit var modeControl: MaterialButtonToggleGroup
     private lateinit var seekRow: AdjustableRow
     private lateinit var seekUnitRow: AdjustableRow
@@ -156,6 +158,25 @@ class PlayerScreen : Screen() {
             })
         }
 
+        randomButton = MaterialButton(context, null, com.google.android.material.R.attr.borderlessButtonStyle).apply {
+            text = "Random Point"
+            setIconResource(R.drawable.ic_casino)
+            setOnClickListener { Engine.jumpToRandomPoint() }
+            hint("Jumps to somewhere at random in the file")
+        }
+        reverseButton = MaterialButton(context, null, com.google.android.material.R.attr.borderlessButtonStyle).apply {
+            text = "Reverse"
+            setIconResource(R.drawable.ic_undo)
+            isCheckable = true
+            setOnClickListener { Engine.toggleReverse() }
+            hint("Plays the file backward from here, or forward again")
+        }
+        val oddments = LinearLayout(context).apply {
+            for (button in listOf(randomButton, reverseButton)) {
+                addView(button, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            }
+        }
+
         // Sliders or touch, as the iPhone's segmented control
         modeControl = MaterialButtonToggleGroup(context).apply {
             isSingleSelection = true
@@ -246,7 +267,8 @@ class PlayerScreen : Screen() {
             add(positionSlider, 2)
             add(times, 10)
             add(transportRow, 4)
-            add(recordButton, 12)
+            add(recordButton, 0)
+            add(oddments, 12)
             add(modeControl, 10)
             add(slidersStack, 10)
             add(seekModeButton, 10)
@@ -373,6 +395,11 @@ class PlayerScreen : Screen() {
         )
         recordButton.isEnabled = loaded || recording
 
+        val seekable = loaded && !Engine.live
+        randomButton.isEnabled = seekable
+        reverseButton.isEnabled = seekable
+        reverseButton.isChecked = Engine.reverse
+
         touchView.scrubMode = Engine.scrubSeekMode
         touchView.seekLabel.text = if (Engine.scrubSeekMode) "${Engine.seekModeName} seeking, ${Engine.seekUnitText}"
         else "Seek by ${Engine.seekUnitText}"
@@ -416,3 +443,11 @@ class PlayerScreen : Screen() {
         private const val TOUCH_SEEK_MODE_KEY = "TouchSeekMode"
     }
 }
+
+/** What TalkBack says a control does, after its name. */
+private fun View.hint(text: String) = ViewCompat.setAccessibilityDelegate(this, object : AccessibilityDelegateCompat() {
+    override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
+        super.onInitializeAccessibilityNodeInfo(host, info)
+        info.hintText = text
+    }
+})

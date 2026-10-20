@@ -35,6 +35,8 @@ final class PlayerViewController: UIViewController {
     private let playPauseButton = UIButton(type: .system)
     private let nextButton = UIButton(type: .system)
     private let recordButton = UIButton(type: .system)
+    private let randomButton = UIButton(type: .system)
+    private let reverseButton = UIButton(type: .system)
     private let modeControl = UISegmentedControl(items: ["Sliders", "Touch"])
 
     private let seekRow = AdjustableRow(name: "Seek", hint: "Swipe up or down to seek forward or back",
@@ -116,6 +118,18 @@ final class PlayerViewController: UIViewController {
         recordButton.addAction(UIAction { [weak self] _ in self?.engine.toggleRecording() }, for: .touchUpInside)
         recordButton.accessibilityHint = "Records what is playing into the Recordings folder of FastPlay's files"
 
+        randomButton.setTitle("Random Point", for: .normal)
+        randomButton.setImage(UIImage(systemName: "dice"), for: .normal)
+        randomButton.addAction(UIAction { [weak self] _ in self?.engine.jumpToRandomPoint() }, for: .touchUpInside)
+        randomButton.accessibilityHint = "Jumps to somewhere at random in the file"
+        reverseButton.setTitle("Reverse", for: .normal)
+        reverseButton.setImage(UIImage(systemName: "arrow.uturn.backward"), for: .normal)
+        reverseButton.addAction(UIAction { [weak self] _ in self?.engine.toggleReverse() }, for: .touchUpInside)
+        reverseButton.accessibilityHint = "Plays the file backward from here, or forward again"
+        let oddments = UIStackView(arrangedSubviews: [randomButton, reverseButton])
+        oddments.axis = .horizontal
+        oddments.distribution = .fillEqually
+
         modeControl.selectedSegmentIndex = UserDefaults.standard.integer(forKey: Self.modeKey)
         modeControl.addTarget(self, action: #selector(modeChanged), for: .valueChanged)
         modeControl.accessibilityLabel = "Controls"
@@ -159,7 +173,8 @@ final class PlayerViewController: UIViewController {
         touchView.setContentHuggingPriority(.defaultLow - 1, for: .vertical)
 
         let stack = UIStackView(arrangedSubviews: [
-            titleLabel, artistLabel, chapterLabel, statusLabel, positionSlider, times, transport, recordButton, modeControl,
+            titleLabel, artistLabel, chapterLabel, statusLabel, positionSlider, times, transport, recordButton, oddments,
+            modeControl,
             slidersStack, seekModeButton, touchView,
         ])
         stack.axis = .vertical
@@ -169,7 +184,7 @@ final class PlayerViewController: UIViewController {
         stack.setCustomSpacing(2, after: chapterLabel)
         stack.setCustomSpacing(2, after: positionSlider)
         stack.setCustomSpacing(4, after: transport)
-        stack.setCustomSpacing(12, after: recordButton)
+        stack.setCustomSpacing(12, after: oddments)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         scroll.translatesAutoresizingMaskIntoConstraints = false
@@ -339,6 +354,13 @@ final class PlayerViewController: UIViewController {
         recordButton.setImage(UIImage(systemName: recording ? "stop.circle.fill" : "record.circle"), for: .normal)
         recordButton.tintColor = recording ? .systemRed : nil
         recordButton.isEnabled = loaded || recording
+
+        let seekable = loaded && !engine.live
+        randomButton.isEnabled = seekable
+        let reverse = engine.reverse
+        reverseButton.isEnabled = seekable
+        reverseButton.isSelected = reverse
+        reverseButton.tintColor = reverse ? .systemOrange : nil
 
         touchView.scrubMode = engine.scrubSeekMode
         touchView.seekLabel.text = engine.scrubSeekMode ? "\(engine.seekModeName) seeking, \(engine.seekUnitText)"
