@@ -245,6 +245,7 @@ void MoveSettingsToThisContainer() {
     StartMediaKeys(
         [](int command) { [FPEngine.shared runCommand:command param:0]; },
         [](int direction, bool pressed) { [FPEngine.shared mediaSeek:direction pressed:pressed]; });
+    SetMediaPositionHandler([](double seconds) { [FPEngine.shared seekTo:seconds]; });
 
     // Now Playing's position, and the app's own time display, twice a second
     _tickTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer*) {

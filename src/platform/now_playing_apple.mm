@@ -16,6 +16,7 @@ namespace {
 
 void (*g_mediaHandler)(int) = nullptr;
 void (*g_seekHandler)(int, bool) = nullptr;
+void (*g_positionHandler)(double) = nullptr;
 NSMutableArray* g_mediaTargets = nil;  // (command, target) pairs to remove on stop
 bool g_mediaSeekControls = false;
 double g_mediaSeekInterval = -1;
@@ -52,6 +53,20 @@ void AddSeekTarget(MPRemoteCommand* command, int direction) {
     [g_mediaTargets addObject:@[command, target]];
 }
 
+// The slider dragged to a time.
+void AddPositionTarget(MPRemoteCommand* command) {
+    id target = [command addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent* event) {
+        if (![event isKindOfClass:[MPChangePlaybackPositionCommandEvent class]]) return MPRemoteCommandHandlerStatusCommandFailed;
+        const double seconds = static_cast<MPChangePlaybackPositionCommandEvent*>(event).positionTime;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (g_positionHandler) g_positionHandler(seconds);
+        });
+        return MPRemoteCommandHandlerStatusSuccess;
+    }];
+    command.enabled = NO;  // until something with a length plays
+    [g_mediaTargets addObject:@[command, target]];
+}
+
 // What Control Center was last told, to update it only when something changes.
 struct NowPlayingState {
     std::wstring title;
@@ -81,7 +96,12 @@ void StartMediaKeys(void (*handler)(int commandId), void (*seekHandler)(int dire
     AddSeekTarget(center.seekForwardCommand, 1);
 	AddMediaTarget(center.skipBackwardCommand, IDM_PLAY_SEEKBACK);
 	AddMediaTarget(center.skipForwardCommand, IDM_PLAY_SEEKFWD);
+    AddPositionTarget(center.changePlaybackPositionCommand);
 	SetMediaSeekControls(false, 0);
+}
+
+void SetMediaPositionHandler(void (*handler)(double seconds)) {
+    g_positionHandler = handler;
 }
 
 void SetMediaSeekControls(bool enabled, double interval) {
@@ -102,6 +122,7 @@ void SetMediaSeekControls(bool enabled, double interval) {
 void StopMediaKeys() {
     g_mediaHandler = nullptr;
     g_seekHandler = nullptr;
+    g_positionHandler = nullptr;
     for (NSArray* pair in g_mediaTargets) {
         MPRemoteCommand* command = pair[0];
         [command removeTarget:pair[1]];
@@ -140,10 +161,14 @@ void UpdateNowPlaying(const std::wstring& title, double duration, double positio
     MPNowPlayingInfoCenter* center = [MPNowPlayingInfoCenter defaultCenter];
     center.nowPlayingInfo = info;
     center.playbackState = playing ? MPNowPlayingPlaybackStatePlaying : MPNowPlayingPlaybackStatePaused;
+    // The slider can be dragged only where there is somewhere to go
+    [MPRemoteCommandCenter sharedCommandCenter].changePlaybackPositionCommand.enabled =
+        g_positionHandler != nullptr && duration > 0;
 }
 
 void ClearNowPlaying() {
     g_nowPlaying = NowPlayingState();
+    [MPRemoteCommandCenter sharedCommandCenter].changePlaybackPositionCommand.enabled = NO;
     MPNowPlayingInfoCenter* center = [MPNowPlayingInfoCenter defaultCenter];
     center.nowPlayingInfo = nil;
     center.playbackState = MPNowPlayingPlaybackStateStopped;

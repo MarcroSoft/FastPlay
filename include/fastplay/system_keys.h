@@ -27,6 +27,12 @@ void UnregisterSystemHotkey(int id);
 void StartMediaKeys(void (*handler)(int commandId), void (*seekHandler)(int direction, bool pressed));
 void StopMediaKeys();
 
+// The position slider on the lock screen and in Control Center: `handler` runs on
+// the UI thread with the time in seconds to go to. Offered only while what is
+// playing has a length (not a live stream). Without a handler the slider is shown
+// but does nothing.
+void SetMediaPositionHandler(void (*handler)(double seconds));
+
 // Replace previous/next with skip buttons, using the player's seek commands.
 // Off by default. `interval` is the displayed time step in seconds, or 0 for a
 // chapter/track step, which has no fixed duration. Call on the UI thread.

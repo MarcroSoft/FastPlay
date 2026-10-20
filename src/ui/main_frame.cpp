@@ -1004,6 +1004,10 @@ void MainFrame::RegisterGlobalHotkeys() {
                    [](int direction, bool pressed) {
                        if (MainFrame* frame = GetMainFrame()) frame->MediaSeek(direction, pressed);
                    });
+    SetMediaPositionHandler([](double seconds) {
+        SeekToPosition(seconds);
+        UpdateStatusBar();
+    });
     SetSystemHotkeyHandler([](int id, bool pressed) {
         if (MainFrame* frame = GetMainFrame()) frame->RunHotkey(id, pressed);
     });
