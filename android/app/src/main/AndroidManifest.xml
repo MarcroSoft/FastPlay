@@ -31,7 +31,7 @@
         tools:targetApi="35">
 
         <!-- BackTalk (a TalkBack fork) can pass touches straight to an app. With
-             regions (offered to BackTalk, not in it yet) it passes through only the
+             regions (development build 370 and later) it passes through only the
              views an app marks: here the player's touch area (DirectTouchView). -->
         <meta-data
             android:name="dev.nvgt.capability.DIRECT_TOUCH_REGIONS"

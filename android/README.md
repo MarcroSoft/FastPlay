@@ -89,6 +89,7 @@ is where recordings and downloads go, as the iPhone's Documents folder.
 ### Direct touch
 
 The player's touch area (`ui/DirectTouchView.kt`) marks itself for BackTalk's
-direct touch regions (offered to BackTalk, not in it yet), which would pass its
-touches straight through. Under TalkBack its commands are its actions in
+direct touch regions (in BackTalk from development build 370), which pass its
+touches straight through: the manifest declares `dev.nvgt.capability.DIRECT_TOUCH_REGIONS`
+and the view has the ID `dev_nvgt_direct_touch_region`. Under TalkBack its commands are its actions in
 TalkBack's actions menu.

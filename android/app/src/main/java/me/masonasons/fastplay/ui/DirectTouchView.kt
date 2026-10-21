@@ -29,8 +29,8 @@ import kotlin.math.hypot
  *   two fingers up or down       the parameter up or down
  *   two finger tap               play or pause
  *
- * With BackTalk's direct touch regions (offered to BackTalk, not in it yet) the
- * touches would come straight here while a screen reader runs, and FastPlay says
+ * With BackTalk's direct touch regions (development build 370 and later) the
+ * touches come straight here while the screen reader runs, and FastPlay says
  * what each one did. Under TalkBack, which passes no touches through, the same
  * commands are this area's actions in TalkBack's actions menu.
  */
