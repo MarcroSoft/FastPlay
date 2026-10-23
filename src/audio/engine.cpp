@@ -9,7 +9,8 @@
 //     played (the position), fades, runs the effects and the tap on what is
 //     heard, applies the gain, and notices the end.
 // A seek stops the mix thread at a safe point (m_mixMutex), has the decode thread
-// reposition the decoder, restarts the tempo processor and empties the ring.
+// reposition the decoder (or, into what it decoded lately, its SourceCache),
+// restarts the tempo processor and empties the ring.
 // Scrubbing is a seek too: to where it starts, with the scrubber filling the ring
 // instead of the tempo processor, and backward, the decode thread reading the
 // source backward.
@@ -37,6 +38,7 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -53,6 +55,8 @@ const double kFileReadAhead = 8.0;
 const double kStreamReadAhead = 10.0;
 // A stream starts (and restarts after running dry) once this much is buffered
 const double kStreamPrebuffer = 2.0;
+// A file's decoded audio kept around where it is playing (SourceCache)
+const double kSourceCacheSeconds = 30.0;
 // A tape stop: seconds from normal speed to a standstill. Slower than kTapeStopped
 // is a standstill: silence; below kTapeQuiet it fades, so the last rumble does not
 // end in a thump.
@@ -136,6 +140,78 @@ private:
     bool m_ended = false;
 };
 
+// ---------------------------------------------------------------------------
+// The source as lately decoded, kept so that a seek into it - scrubbing's start
+// and end, a tape let go of, a short jump back - plays from memory at once rather
+// than waiting on the decoder to seek (worst on a CD, whose drive has to move
+// back). One unbroken stretch of the source, [Start(), End()), forward in time,
+// up to its most frames: what is decoded going forward is added at the end, and
+// reading backward (scrubbing back), at the start. A file's only (a live stream
+// has its own buffer for rewinding). The decode thread's, under decoderMutex.
+// ---------------------------------------------------------------------------
+
+class SourceCache {
+public:
+    void Reset(size_t maxFrames) {
+        std::deque<float>().swap(m_data);
+        m_start = 0;
+        m_max = maxFrames;
+    }
+
+    int64_t Start() const { return m_start; }
+    int64_t End() const { return m_start + static_cast<int64_t>(Frames()); }
+    bool Has(int64_t frame) const { return frame >= m_start && frame < End(); }
+    bool Covers(int64_t from, int64_t to) const { return Frames() > 0 && from >= m_start && to <= End(); }
+
+    // `frames` decoded at source frame `at`: what is new of them joins the stretch
+    // if they meet or overlap it, else they start a new one
+    void Add(int64_t at, const float* in, size_t frames) {
+        if (m_max == 0 || frames == 0) return;
+        const int64_t to = at + static_cast<int64_t>(frames);
+        if (Frames() == 0 || at > End() || to < m_start) {
+            m_data.clear();
+            m_start = at;
+        }
+        if (at < m_start) {
+            // Leading up to it: the frames before its start, last first
+            for (int64_t f = std::min(to, m_start) - 1; f >= at; f--) {
+                const size_t i = static_cast<size_t>(f - at) * kChannels;
+                m_data.push_front(in[i + 1]);
+                m_data.push_front(in[i]);
+            }
+            m_start = at;
+            while (Frames() > m_max) m_data.resize(m_data.size() - kChannels);
+        }
+        if (to > End()) {
+            for (int64_t f = std::max(at, End()); f < to; f++) {
+                const size_t i = static_cast<size_t>(f - at) * kChannels;
+                m_data.push_back(in[i]);
+                m_data.push_back(in[i + 1]);
+            }
+            while (Frames() > m_max) {
+                m_data.erase(m_data.begin(), m_data.begin() + kChannels);
+                m_start++;
+            }
+        }
+    }
+
+    // Up to `frames` of it from source frame `from`; how many it had
+    size_t Copy(int64_t from, float* out, size_t frames) const {
+        if (!Has(from)) return 0;
+        const size_t n = std::min(frames, static_cast<size_t>(End() - from));
+        auto it = m_data.begin() + static_cast<std::ptrdiff_t>((from - m_start) * kChannels);
+        std::copy(it, it + static_cast<std::ptrdiff_t>(n * kChannels), out);
+        return n;
+    }
+
+private:
+    size_t Frames() const { return m_data.size() / kChannels; }
+
+    std::deque<float> m_data;  // interleaved
+    int64_t m_start = 0;
+    size_t m_max = 0;
+};
+
 struct Dsp {
     int id;
     DspProc proc;
@@ -217,7 +293,7 @@ struct Player::Impl {
     float tempo = 0, pitch = 0, rate = 1;
 
     // Scrubbing: the scrubber (UI thread and mix thread, under mixMutex), and the
-    // decode thread reading backward (under decoderMutex): a chunk at a time,
+    // decode thread reading backward (under feedMutex): a chunk at a time,
     // each ending where the last began
     std::unique_ptr<Scrubber> scrub;
     int sourceRate = 44100;
@@ -229,6 +305,21 @@ struct Player::Impl {
     int reverseChunkFrames = 0;
     int64_t reverseFloor = 0;        // where reading backward stops (a frame of the source)
     std::vector<float> reverseTail;  // the overlap held back to crossfade with the next chunk
+
+    // What goes into the buffer (pcm), under feedMutex: which way (reverse, and the
+    // reading backward above), a file's decoded audio kept around where it plays,
+    // the next frame forward into the buffer, and the source's end once the decoder
+    // has met it. A seek into the cache, or any seek backward (which reads nothing
+    // yet), is made here at once, without waiting for the decode thread, whose
+    // reading meanwhile is kept in the cache but not put in the buffer: every seek
+    // moves feedGeneration on, and what was read for an older one is not used.
+    // Taken after decoderMutex, never before it.
+    std::mutex feedMutex;
+    uint64_t feedGeneration = 0;
+    SourceCache cache;
+    int64_t feedFrame = 0;
+    int64_t endFrame = -1;
+    int64_t decoderFrame = 0;  // the next frame the decoder would read (under decoderMutex)
 
     // The tape stop: the device takes what is already in the ring slower and slower,
     // pitch and all, down to a standstill, so it starts the moment it is asked for.
@@ -525,36 +616,124 @@ ma_uint32 TapeStopBlock(Engine& g, float* out, ma_uint32 frameCount) {
 // Decode thread
 // ---------------------------------------------------------------------------
 
+// Where the buffer is filled from, from now on (feedMutex held): forward from
+// source frame `frame`, or backward from it in chunks of `chunkFrames`, back as far
+// as `floorFrames`. The buffer is emptied, and what is being read for before is
+// not used.
+void SetFeed(Engine& g, int64_t frame, bool reverse, int chunkFrames, int64_t floorFrames) {
+    g.feedGeneration++;
+    g.reverse = reverse;
+    if (reverse) {
+        g.reverseEnd = frame;
+        g.reverseChunkFrames = std::max(chunkFrames, g.sourceRate / 10);
+        g.reverseFloor = floorFrames;
+        g.reverseTail.clear();
+    } else {
+        g.feedFrame = frame;
+    }
+    g.pcm.Clear();
+}
+
 // Reading backward, for scrubbing: the chunk before reverseEnd, reversed, into the
 // buffer. Each is read with a little more before it, held back and crossfaded
 // into the start of the next, so a seek that lands a few samples off never
 // clicks; and a little more before that again, decoded and dropped, since some
 // formats (MP3) take a frame or two to settle after a seek.
-void ReadBackward(Engine& g, std::vector<float>& chunk, std::vector<float>& reversed) {
-    std::lock_guard<std::mutex> use(g.decoderMutex);
-    if (!g.decoder || !g.reverse) return;
-    const int64_t end = g.reverseEnd;
-    if (end <= g.reverseFloor) {
+struct BackChunk {
+    int64_t end;     // it ends here (reverseEnd)
+    int64_t start;   // and the next ends here
+    int64_t from;    // what is kept begins here, overlapping the next
+    int64_t seekTo;  // and it is read from here, to settle
+};
+
+// The next chunk backward (feedMutex held). False at the floor, which is the end.
+bool NextBackChunk(Engine& g, BackChunk& c) {
+    c.end = g.reverseEnd;
+    if (c.end <= g.reverseFloor) {
         g.pcm.SetEnded();  // back at the start (or the oldest a live stream keeps)
-        return;
+        return false;
     }
     const int64_t overlap = g.sourceRate / 50;  // 20 ms
     const int64_t settle = g.sourceRate / 10;   // 100 ms
-    const int64_t start = std::max<int64_t>(g.reverseFloor, end - g.reverseChunkFrames);
-    const int64_t from = std::max<int64_t>(g.reverseFloor, start - overlap);
-    const int64_t seekTo = std::max<int64_t>(g.reverseFloor, from - settle);
-    const size_t frames = static_cast<size_t>(end - seekTo);
+    c.start = std::max<int64_t>(g.reverseFloor, c.end - g.reverseChunkFrames);
+    c.from = std::max<int64_t>(g.reverseFloor, c.start - overlap);
+    c.seekTo = std::max<int64_t>(g.reverseFloor, c.from - settle);
+    return true;
+}
+
+// A chunk read (`got` frames from c.seekTo), reversed into the buffer (feedMutex held)
+void PutBackChunk(Engine& g, const BackChunk& c, const std::vector<float>& chunk, size_t got,
+                  std::vector<float>& reversed);
+
+// The next chunk backward from the cache, if it has its end (feedMutex held). If
+// the cache begins part way into it, a shorter chunk, from where the cache
+// begins (decoded on from before it, it needs no settling).
+bool BackChunkFromCache(Engine& g, std::vector<float>& chunk, std::vector<float>& reversed) {
+    BackChunk c;
+    if (!g.reverse || !NextBackChunk(g, c) || !g.cache.Has(c.end - 1)) return false;
+    if (c.seekTo < g.cache.Start()) {
+        const int64_t overlap = g.sourceRate / 50;
+        if (c.from < g.cache.Start()) {
+            c.from = g.cache.Start();
+            c.start = std::max(c.start, c.from + overlap);
+        }
+        c.seekTo = c.from;
+        if (c.end - c.start < overlap) return false;  // next to none of it
+    }
+    const size_t frames = static_cast<size_t>(c.end - c.seekTo);
+    chunk.resize(frames * kChannels);
+    PutBackChunk(g, c, chunk, g.cache.Copy(c.seekTo, chunk.data(), frames), reversed);
+    return true;
+}
+
+void ReadBackward(Engine& g, std::vector<float>& chunk, std::vector<float>& reversed) {
+    uint64_t generation;
+    BackChunk c;
+    {
+        std::lock_guard<std::mutex> feed(g.feedMutex);
+        if (!g.reverse) return;
+        if (BackChunkFromCache(g, chunk, reversed)) return;  // decoded lately: no seek
+        if (!NextBackChunk(g, c)) return;
+        generation = g.feedGeneration;
+    }
+    const size_t frames = static_cast<size_t>(c.end - c.seekTo);
+    const size_t keepStart = static_cast<size_t>(c.from - c.seekTo);
     chunk.resize(frames * kChannels);
     size_t got = 0;
-    if (g.decoder->Seek(static_cast<double>(seekTo) / g.sourceRate)) {
-        while (got < frames) {
-            int n = g.decoder->Read(chunk.data() + got * kChannels, static_cast<int>(std::min<size_t>(4096, frames - got)));
-            if (n <= 0) break;
-            got += static_cast<size_t>(n);
+    const auto began = std::chrono::steady_clock::now();
+    {
+        std::lock_guard<std::mutex> use(g.decoderMutex);
+        if (!g.decoder) return;
+        g.decoderFrame = -1;  // wherever the seek and the reading leave it
+        if (g.decoder->Seek(static_cast<double>(c.seekTo) / g.sourceRate)) {
+            while (got < frames) {
+                int n = g.decoder->Read(chunk.data() + got * kChannels,
+                                        static_cast<int>(std::min<size_t>(4096, frames - got)));
+                if (n <= 0) break;
+                got += static_cast<size_t>(n);
+            }
+            g.decoderFrame = c.seekTo + static_cast<int64_t>(got);
+            // Kept from where it has settled, so scrubbing back over it again, or
+            // playing on forward from it, needs no seek
+            std::lock_guard<std::mutex> feed(g.feedMutex);
+            if (got > keepStart) g.cache.Add(c.from, chunk.data() + keepStart * kChannels, got - keepStart);
         }
     }
+    std::lock_guard<std::mutex> feed(g.feedMutex);
+    if (generation != g.feedGeneration) return;  // a seek came meanwhile
+    PutBackChunk(g, c, chunk, got, reversed);
+    // Slow to seek (a CD's drive moving back each time): longer chunks, so it
+    // seeks less often and keeps up
+    if (std::chrono::steady_clock::now() - began > std::chrono::milliseconds(50)) {
+        g.reverseChunkFrames = std::min(g.reverseChunkFrames * 2, 4 * g.sourceRate);
+    }
+}
+
+void PutBackChunk(Engine& g, const BackChunk& c, const std::vector<float>& chunk, size_t got,
+                  std::vector<float>& reversed) {
+    const int64_t start = c.start, from = c.from;
+    const size_t keepStart = static_cast<size_t>(c.from - c.seekTo);
     g.reverseEnd = start;
-    const size_t keepStart = static_cast<size_t>(from - seekTo);
     if (got <= keepStart) return;
     const size_t count = got - keepStart;
     reversed.resize(count * kChannels);
@@ -577,6 +756,53 @@ void ReadBackward(Engine& g, std::vector<float>& chunk, std::vector<float>& reve
     g.reverseTail.assign(reversed.end() - static_cast<std::ptrdiff_t>(hold * kChannels), reversed.end());
 }
 
+// A file, going forward: the next block into the buffer, from what was decoded
+// lately while there is some, then from the decoder (seeking it there first if
+// it is elsewhere). What the decoder reads goes into the cache whatever happens,
+// and into the buffer unless a seek came while it read.
+void ReadForward(Engine& g, std::vector<float>& block) {
+    uint64_t generation;
+    int64_t frame;
+    {
+        std::lock_guard<std::mutex> feed(g.feedMutex);
+        if (g.reverse) return;
+        generation = g.feedGeneration;
+        frame = g.feedFrame;
+        size_t got = g.cache.Copy(frame, block.data(), 4096);
+        if (got > 0) {
+            g.pcm.Write(block.data(), got);
+            g.feedFrame += static_cast<int64_t>(got);
+            return;
+        }
+        if (g.endFrame >= 0 && frame >= g.endFrame) {
+            g.pcm.SetEnded();
+            return;
+        }
+    }
+    std::lock_guard<std::mutex> use(g.decoderMutex);
+    if (!g.decoder) return;
+    bool there = g.decoderFrame == frame;
+    if (!there && g.decoder->Seek(static_cast<double>(frame) / g.sourceRate)) {
+        g.decoderFrame = frame;
+        there = true;
+    }
+    int n = there ? g.decoder->Read(block.data(), 4096) : 0;
+    std::lock_guard<std::mutex> feed(g.feedMutex);
+    if (n > 0) {
+        g.cache.Add(g.decoderFrame, block.data(), static_cast<size_t>(n));
+        g.decoderFrame += n;
+    } else if (there) {
+        g.endFrame = g.decoderFrame;
+    }
+    if (generation != g.feedGeneration) return;
+    if (n > 0) {
+        g.pcm.Write(block.data(), static_cast<size_t>(n));
+        g.feedFrame += n;
+    } else {
+        g.pcm.SetEnded();  // the end, or it could not seek there
+    }
+}
+
 void DecodeLoop(Engine* engine) {
     Engine& g = *engine;
     std::vector<float> block(4096 * kChannels);
@@ -592,31 +818,40 @@ void DecodeLoop(Engine* engine) {
                 int chunkFrames = g.seekChunkFrames;
                 int64_t floorFrames = g.seekFloorFrames;
                 lock.unlock();
-                bool ok;
+                bool ok = true;
                 {
                     std::lock_guard<std::mutex> use(g.decoderMutex);
-                    g.reverse = reverse && g.decoder;
-                    if (g.reverse) {
-                        // Nothing to do yet: the first chunk ends here
-                        g.reverseEnd = static_cast<int64_t>(std::llround(target * g.sourceRate));
-                        g.reverseChunkFrames = std::max(chunkFrames, g.sourceRate / 10);
-                        g.reverseFloor = floorFrames;
-                        g.reverseTail.clear();
-                        ok = true;
-                    } else {
-                        ok = g.decoder && g.decoder->Seek(target);
+                    bool seek;
+                    const int64_t frame = std::llround(target * g.sourceRate);
+                    {
+                        std::lock_guard<std::mutex> feed(g.feedMutex);
+                        SetFeed(g, frame, reverse && g.decoder, chunkFrames, floorFrames);
+                        // Backward, nothing to do yet (the first chunk ends here); a
+                        // file, nothing either into what was decoded lately, or where
+                        // the decoder already is
+                        seek = g.decoder && !g.reverse &&
+                               (g.live || !(g.cache.Has(frame) || frame == g.decoderFrame));
+                    }
+                    if (seek) {
+                        ok = g.decoder->Seek(target);
+                        g.decoderFrame = ok ? frame : -1;
+                    } else if (!g.decoder) {
+                        ok = false;
                     }
                 }
-                g.pcm.Clear();
                 lock.lock();
                 g.seekOk = ok;
                 g.seekDone = true;
                 g.seekFinished.notify_all();
                 continue;
             }
-            backward = g.reverse;
-            // Room for a block, or backward, for a whole chunk and its overlap
-            size_t room = backward ? static_cast<size_t>(g.reverseChunkFrames + g.sourceRate / 50) : 4096;
+            size_t room;
+            {
+                std::lock_guard<std::mutex> feed(g.feedMutex);
+                backward = g.reverse;
+                // Room for a block, or backward, for a whole chunk and its overlap
+                room = backward ? static_cast<size_t>(g.reverseChunkFrames + g.sourceRate / 50) : 4096;
+            }
             // (a live stream kept for rewinding that has played all it has: until more comes)
             if (!g.decoder || g.pcm.DecoderEnded() || g.pcm.Space() < room || (!backward && g.decoder->Starved())) {
                 g.decodeWake.wait_for(lock, std::chrono::milliseconds(20));
@@ -627,6 +862,10 @@ void DecodeLoop(Engine* engine) {
             ReadBackward(g, chunk, reversed);
             continue;
         }
+        if (!g.live) {
+            ReadForward(g, block);
+            continue;
+        }
         bool titleChanged;
         {
             // Written while the decoder is still held, so a block read from a
@@ -634,10 +873,13 @@ void DecodeLoop(Engine* engine) {
             std::lock_guard<std::mutex> use(g.decoderMutex);
             if (!g.decoder) continue;
             int got = g.decoder->Read(block.data(), 4096);
-            if (got > 0) {
-                g.pcm.Write(block.data(), static_cast<size_t>(got));
-            } else if (!g.decoder->Starved()) {
-                g.pcm.SetEnded();
+            {
+                std::lock_guard<std::mutex> feed(g.feedMutex);
+                if (got > 0) {
+                    g.pcm.Write(block.data(), static_cast<size_t>(got));
+                } else if (!g.decoder->Starved()) {
+                    g.pcm.SetEnded();
+                }
             }
             titleChanged = TakeStreamTitleChange(g.decoder.get());
         }
@@ -950,7 +1192,13 @@ bool Player::Load(std::unique_ptr<Decoder> decoder, TempoAlgorithm algorithm) {
     {
         std::lock_guard<std::mutex> use(g.decoderMutex);
         g.decoder = std::move(decoder);
+        g.decoderFrame = 0;
+        std::lock_guard<std::mutex> feed(g.feedMutex);
+        g.feedGeneration++;
         g.reverse = false;
+        g.cache.Reset(g.live ? 0 : static_cast<size_t>(rate * kSourceCacheSeconds));
+        g.feedFrame = 0;
+        g.endFrame = -1;
     }
     g.playReverse = false;
     g.seekRequested = false;
@@ -979,7 +1227,10 @@ void Player::Unload() {
     {
         std::lock_guard<std::mutex> use(g.decoderMutex);
         g.decoder.reset();
+        std::lock_guard<std::mutex> feed(g.feedMutex);
+        g.feedGeneration++;
         g.reverse = false;
+        g.cache.Reset(0);
     }
     g.playReverse = false;
     g.pcm.Clear();
@@ -1067,6 +1318,37 @@ bool Player::IsLive() {
 
 namespace {
 
+// A file's seek made here and now, not waiting for the decode thread (which may be
+// in the middle of reading a CD, say): backward, where nothing is read until the
+// first chunk, or forward into what was decoded lately. False if the decoder
+// has to seek.
+bool SeekNow(Engine& g, double seconds, int reverseChunkFrames, double floorSeconds) {
+    if (g.live || !g.decoder) return false;
+    const int64_t frame = std::llround(seconds * g.sourceRate);
+    std::lock_guard<std::mutex> feed(g.feedMutex);
+    if (reverseChunkFrames <= 0 && !g.cache.Has(frame)) return false;
+    SetFeed(g, frame, reverseChunkFrames > 0, reverseChunkFrames, static_cast<int64_t>(floorSeconds * g.sourceRate));
+    // A start on the buffer from the cache, here, so it plays at once even while
+    // the decode thread is still busy with the drive or the decoder
+    if (g.reverse) {
+        std::vector<float> chunk, reversed;
+        for (int i = 0; i < 2; i++) {
+            if (g.pcm.Space() < static_cast<size_t>(g.reverseChunkFrames + g.sourceRate / 50)) break;
+            if (!BackChunkFromCache(g, chunk, reversed)) break;
+        }
+    } else {
+        std::vector<float> block(4096 * kChannels);
+        const int64_t until = frame + 2 * g.sourceRate;  // a couple of seconds
+        while (g.feedFrame < until && g.pcm.Space() >= 4096) {
+            size_t got = g.cache.Copy(g.feedFrame, block.data(), 4096);
+            if (got == 0) break;
+            g.pcm.Write(block.data(), got);
+            g.feedFrame += static_cast<int64_t>(got);
+        }
+    }
+    return true;
+}
+
 // Carries on from `seconds`: played normally (scrub null), or by the scrubber,
 // reading the source backward in chunks of `reverseChunkFrames` if that is not 0,
 // back as far as `floorSeconds`. Played normally while playing in reverse, it
@@ -1081,8 +1363,8 @@ bool Reposition(Engine& g, double seconds, std::unique_ptr<Scrubber> scrub, int 
         ~FadeBackIn() { g.fadeOut = false; }
     } fadeBackIn{g};  // however the seek ends
     std::unique_lock<std::mutex> mix(g.mixMutex);
-    bool ok;
-    {
+    bool ok = true;
+    if (!SeekNow(g, seconds, reverseChunkFrames, floorSeconds)) {
         std::unique_lock<std::mutex> lock(g.decodeMutex);
         g.seekTarget = seconds;
         g.seekReverse = reverseChunkFrames > 0;
