@@ -621,21 +621,20 @@ void SpeakSeekMode() {
 static void ScrubWoundDown() {
     const ScrubEnding ending = g_scrubEnding;
     g_scrubEnding = ScrubEnding::None;
-    if (!audio::IsScrubbing()) return;  // something else happened meanwhile
+    // (Unless something else happened meanwhile)
     switch (ending) {
         case ScrubEnding::Release:
-            FinishScrubbing();
+            if (audio::IsScrubbing()) FinishScrubbing();
             break;
         case ScrubEnding::Pause:
-            audio::Pause();
-            audio::StopScrub();  // ready to play on from where the tape stopped
+            if (!audio::IsTapeStopping()) break;
+            audio::Pause();  // ready to play on from where the tape stopped
             if (g_rewindOnPauseMs > 0) Seek(-g_rewindOnPauseMs / 1000.0);
             UpdateWindowTitle();
             UpdateStatusBar();
             break;
         case ScrubEnding::Stop:
-            audio::StopScrub();
-            StopNow();
+            if (audio::IsTapeStopping()) StopNow();
             break;
         case ScrubEnding::None:
             break;
@@ -652,8 +651,8 @@ static bool TapeStopFirst(bool stopping) {
 }
 
 static bool TapeStopping() {
-    // (Still the same tape: a new track since ends it)
-    return (g_scrubEnding == ScrubEnding::Pause || g_scrubEnding == ScrubEnding::Stop) && audio::IsScrubbing();
+    // (Still the same tape: a new track or a seek since ends it)
+    return (g_scrubEnding == ScrubEnding::Pause || g_scrubEnding == ScrubEnding::Stop) && audio::IsTapeStopping();
 }
 
 static void TapeStopNow() {

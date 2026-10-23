@@ -53,6 +53,12 @@ const double kFileReadAhead = 8.0;
 const double kStreamReadAhead = 10.0;
 // A stream starts (and restarts after running dry) once this much is buffered
 const double kStreamPrebuffer = 2.0;
+// A tape stop: seconds from normal speed to a standstill. Slower than kTapeStopped
+// is a standstill: silence; below kTapeQuiet it fades, so the last rumble does not
+// end in a thump.
+const double kTapeStopSeconds = 0.6;
+const double kTapeStopped = 0.01;
+const double kTapeQuiet = 0.15;
 
 // ---------------------------------------------------------------------------
 // The decoded audio buffered between the decode and mix threads
@@ -224,6 +230,18 @@ struct Player::Impl {
     int64_t reverseFloor = 0;        // where reading backward stops (a frame of the source)
     std::vector<float> reverseTail;  // the overlap held back to crossfade with the next chunk
 
+    // The tape stop: the device takes what is already in the ring slower and slower,
+    // pitch and all, down to a standstill, so it starts the moment it is asked for.
+    // tapeStop is set and cleared under ringMutex (which the callback holds while it
+    // plays it); the rest is the callback's, set up by TapeStop() under ringMutex.
+    std::atomic<bool> tapeStop{false};
+    bool tapeStarted = false;       // a and b hold the first two frames
+    bool tapeStandstill = false;    // stopped, and the scrub end handler called
+    uint64_t tapeElapsed = 0;       // output frames since it began
+    double tapePos = 0;             // between tapeA and tapeB
+    float tapeA[kChannels] = {}, tapeB[kChannels] = {};
+    std::vector<float> tapeIn;      // the frames a block takes from the ring
+
     // Playing in reverse (UI thread, under mixMutex): the source read backward
     // into the usual tempo processor and effects, from reverseFrom
     bool playReverse = false;
@@ -309,6 +327,7 @@ void ReleaseContext() {
 
 void Callback(Engine& g, float* out, ma_uint32 frameCount);
 void RunDsps(Engine& g, float* samples, int frames);
+ma_uint32 TapeStopBlock(Engine& g, float* out, ma_uint32 frameCount);
 
 void DataCallback(ma_device* device, void* output, const void*, ma_uint32 frameCount) {
     Engine& g = *static_cast<Engine*>(device->pUserData);
@@ -346,7 +365,13 @@ void Callback(Engine& g, float* out, ma_uint32 frameCount) {
                 (ma_pcm_rb_available_read(&g.ring) >= frameCount * 2 || g.producerEnded.load())) {
                 g.primed = true;
             }
-            if (g.primed.load()) {
+            if (g.primed.load() && g.tapeStop.load()) {
+                // Every frame of the block is made, from fewer of the ring's
+                const ma_uint32 took = TapeStopBlock(g, out, frameCount);
+                done = frameCount;
+                g.played += took;
+                if (took > 0) g.mixWake.notify_one();
+            } else if (g.primed.load()) {
                 ma_uint32 buffered = ma_pcm_rb_available_read(&g.ring);
                 if (buffered < g.minBuffered.load()) g.minBuffered = buffered;
                 if (buffered < frameCount && !g.producerEnded.load() && !g.mixWaiting.load()) g.underruns++;
@@ -419,6 +444,81 @@ void Callback(Engine& g, float* out, ma_uint32 frameCount) {
             if (handler) handler();
         });
     }
+}
+
+// A block of the tape stop: what comes next in the ring, resampled slower and
+// slower (so lower and lower) down to a standstill, then silence, and the scrub
+// end handler is called once. Returns the ring frames it took. Called with
+// ringMutex held.
+ma_uint32 TapeStopBlock(Engine& g, float* out, ma_uint32 frameCount) {
+    const double length = kTapeStopSeconds * g.outputRate;
+    auto speed = [length](uint64_t elapsed) { return std::max(0.0, 1.0 - static_cast<double>(elapsed) / length); };
+
+    // The ring frames the block moves on by, at the speeds it plays at (and the
+    // first two, to start between)
+    size_t want = g.tapeStarted ? 0 : 2;
+    double pos = g.tapePos;
+    for (ma_uint32 i = 0; i < frameCount; i++) {
+        const double s = speed(g.tapeElapsed + i);
+        if (s < kTapeStopped) break;
+        pos += s;
+        while (pos >= 1.0) {
+            pos -= 1.0;
+            want++;
+        }
+    }
+    want = std::min(want, g.tapeIn.size() / kChannels);
+    size_t got = 0;
+    while (got < want) {
+        ma_uint32 n = static_cast<ma_uint32>(want - got);
+        void* buffer = nullptr;
+        if (ma_pcm_rb_acquire_read(&g.ring, &n, &buffer) != MA_SUCCESS || n == 0) break;
+        std::memcpy(g.tapeIn.data() + got * kChannels, buffer, static_cast<size_t>(n) * kChannels * sizeof(float));
+        ma_pcm_rb_commit_read(&g.ring, n);
+        got += n;
+    }
+
+    // The next frame into b: from the ring, or when it has run dry (the end of
+    // the track), ramping down to silence so it doesn't click
+    size_t next = 0;
+    auto take = [&]() {
+        for (int ch = 0; ch < kChannels; ch++) {
+            g.tapeA[ch] = g.tapeB[ch];
+            g.tapeB[ch] = next < got ? g.tapeIn[next * kChannels + ch] : g.tapeB[ch] * 0.99f;
+        }
+        if (next < got) next++;
+    };
+    if (!g.tapeStarted) {
+        take();
+        take();
+        g.tapeStarted = true;
+    }
+    for (ma_uint32 i = 0; i < frameCount; i++) {
+        const double s = speed(g.tapeElapsed);
+        if (s < kTapeStopped) {
+            out[i * kChannels] = out[i * kChannels + 1] = 0.0f;
+            if (!g.tapeStandstill) {
+                g.tapeStandstill = true;
+                RunOnUiThread([handler = g.scrubEndHandler]() {
+                    if (handler) handler();
+                });
+            }
+            continue;
+        }
+        // Fading to nothing on the way to the standstill
+        const float level = static_cast<float>(std::min(1.0, (s - kTapeStopped) / (kTapeQuiet - kTapeStopped)));
+        const float f = static_cast<float>(g.tapePos);
+        for (int ch = 0; ch < kChannels; ch++) {
+            out[i * kChannels + ch] = (g.tapeA[ch] + (g.tapeB[ch] - g.tapeA[ch]) * f) * level;
+        }
+        g.tapePos += s;
+        while (g.tapePos >= 1.0) {
+            g.tapePos -= 1.0;
+            take();
+        }
+        g.tapeElapsed++;
+    }
+    return static_cast<ma_uint32>(got);
 }
 
 // ---------------------------------------------------------------------------
@@ -646,6 +746,7 @@ void CloseDevice(Engine& g) {
         ma_pcm_rb_uninit(&g.ring);
         g.ringReady = false;
     }
+    g.tapeStop = false;
 }
 
 void StopIdleDevice(Engine& g) {
@@ -713,10 +814,17 @@ bool OpenDevice(Engine& g, const std::wstring& name, int bufferMs) {
 void ResetOutput(Engine& g) {
     std::lock_guard<std::mutex> lock(g.ringMutex);
     if (g.ringReady) ma_pcm_rb_reset(&g.ring);
+    g.tapeStop = false;
     g.primed = false;
     g.played = 0;
     g.producerEnded = false;
     g.endReported = false;
+}
+
+// Back to taking the ring as it comes. What the tape stop left in it plays next.
+void EndTapeStop(Engine& g) {
+    std::lock_guard<std::mutex> lock(g.ringMutex);
+    g.tapeStop = false;
 }
 
 // Fades the sound out and waits until it is silent (a few milliseconds), so what
@@ -916,6 +1024,7 @@ void Player::Pause() {
     FadeOut(g, true);
     g.state = State::Paused;
     g.fadeOut = false;
+    EndTapeStop(g);  // played on from where the tape stopped
 	StopIdleDevice(g);
 }
 
@@ -925,6 +1034,7 @@ void Player::Stop() {
     FadeOut(g, true);
     g.state = State::Stopped;
     g.fadeOut = false;
+    EndTapeStop(g);
 	StopIdleDevice(g);
 }
 
@@ -1102,15 +1212,26 @@ bool Player::ReleaseScrub() {
 
 bool Player::TapeStop() {
     Engine& g = *m;
-    if (!g.loaded) return false;
-    if (g.live) {
-        double start, live;
-        if (!LiveRange(start, live)) return false;
+    if (!g.loaded || g.state.load() != State::Playing) return false;
+    {
+        std::lock_guard<std::mutex> mix(g.mixMutex);
+        if (g.scrub) return false;
     }
-    double from = Position();
-    auto scrub = std::make_unique<Scrubber>(ScrubStyle::Tape, 1, 1.0f, g.sourceRate, g.outputRate, from,
-                                            Scrubber::Begin::TapeStop);
-    return Reposition(g, from, std::move(scrub), 0);
+    // No seek: the device slows down what is already in the ring, at once
+    std::lock_guard<std::mutex> lock(g.ringMutex);
+    if (!g.ringReady || g.tapeStop) return false;
+    g.tapeIn.resize(g.ringFrames * kChannels);
+    g.tapeStarted = false;
+    g.tapeStandstill = false;
+    g.tapeElapsed = 0;
+    g.tapePos = 0;
+    g.tapeStop = true;
+    return true;
+}
+
+bool Player::IsTapeStopping() {
+    Engine& g = *m;
+    return g.loaded && g.tapeStop.load();
 }
 
 void Player::SetScrubEndHandler(std::function<void()> handler) {
@@ -1253,6 +1374,7 @@ bool SetReverse(bool on) { return DefaultPlayer().SetReverse(on); }
 bool IsReverse() { return DefaultPlayer().IsReverse(); }
 bool ReleaseScrub() { return DefaultPlayer().ReleaseScrub(); }
 bool TapeStop() { return DefaultPlayer().TapeStop(); }
+bool IsTapeStopping() { return DefaultPlayer().IsTapeStopping(); }
 void SetScrubEndHandler(std::function<void()> handler) { return DefaultPlayer().SetScrubEndHandler(std::move(handler)); }
 void SetTempo(float percent) { return DefaultPlayer().SetTempo(percent); }
 void SetPitch(float semitones) { return DefaultPlayer().SetPitch(semitones); }
