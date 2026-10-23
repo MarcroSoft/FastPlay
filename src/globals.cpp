@@ -101,7 +101,10 @@ const FileAssoc g_fileAssocs[] = {
     // DSD plugin
     {L".dff", L"DSD Audio"},
     {L".dsf", L"DSD Audio"},
-    // CD Audio plugin
+#ifdef _WIN32
+    // Audio CD tracks
+    {L".cda", L"CD Audio Track"},
+#endif
     // HLS streaming
     // (no file extension - network only)
     // MOD/tracker formats

@@ -53,6 +53,7 @@ set(FPE_SOURCES
 )
 if(WIN32)
     list(APPEND FPE_SOURCES
+        src/audio/decoder_cdda_windows.cpp
         src/platform/http_windows.cpp
         src/platform/ini_windows.cpp
         src/platform/subprocess_windows.cpp

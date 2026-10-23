@@ -365,6 +365,7 @@ endif()
 
 if(WIN32)
     list(APPEND FASTPLAY_SOURCES
+        src/audio/decoder_cdda_windows.cpp
         src/platform/file_assoc_windows.cpp
         src/platform/http_windows.cpp
         src/platform/ini_windows.cpp

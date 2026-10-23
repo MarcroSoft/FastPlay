@@ -19,6 +19,10 @@ std::unique_ptr<Decoder> OpenFfmpegDecoder(const std::wstring& pathOrUrl, std::w
 std::unique_ptr<Decoder> OpenXheAacDecoder(const std::wstring& path, std::wstring& error);
 std::unique_ptr<Decoder> OpenMidiDecoder(const std::wstring& path, std::wstring& error);
 std::unique_ptr<Decoder> OpenTrackerDecoder(const std::wstring& path, std::wstring& error);
+#ifdef _WIN32
+// An audio CD track: a .cda file on a CD drive
+std::unique_ptr<Decoder> OpenCdDecoder(const std::wstring& path, std::wstring& error);
+#endif
 // A tracker module, by its extension (as libopenmpt knows them)
 bool IsTrackerPath(const std::wstring& path);
 
