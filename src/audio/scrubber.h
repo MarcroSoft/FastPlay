@@ -9,8 +9,7 @@
 // Its input is the decoded audio in the order it is to be heard: forward, or for
 // scrubbing backward, the source reversed (the decode thread reads it backward).
 // Tape: resampled, so pitch rises with speed, spinning up over a moment; let go,
-// it winds back down (to normal speed going forward, to a stop going back). A tape
-// stop is tape slowing from normal speed to a standstill. Spring: time-stretched
+// it winds back down (to normal speed going forward, to a stop going back). Spring: time-stretched
 // (Signalsmith Stretch), so pitch stays, and it winds up the longer it is held,
 // doubling in speed every half second up to the top speed.
 
@@ -27,9 +26,9 @@ namespace audio {
 
 class Scrubber {
 public:
-    // How it starts: held (spinning up), winding down from `fromSpeed` (a tape
-    // let go of), or a tape stop (forward from normal speed to a standstill).
-    enum class Begin { Held, WindDown, TapeStop };
+    // How it starts: held (spinning up), or winding down from `fromSpeed` (a tape
+    // let go of).
+    enum class Begin { Held, WindDown };
 
     // `speed`: tape's speed, or spring's top speed (times normal).
     Scrubber(ScrubStyle style, int direction, float speed, int sourceRate, int outputRate, double start,
@@ -47,7 +46,7 @@ public:
     float TopSpeed() const { return m_topSpeed; }
     // The speed of what is heard at output frame `played`, while held
     double HeardSpeed(uint64_t played) const;
-    // Wound down (to normal speed, or to a standstill) and heard to the end of it,
+    // Wound down (to normal speed, or going back, to a standstill) and heard to the end of it,
     // `played` being the output frames heard: true once
     bool TakeFinished(uint64_t played);
     // Winding down rather than held
@@ -56,7 +55,7 @@ public:
 private:
     struct Stretch;
 
-    enum class Phase { Held, Release, TapeStop };
+    enum class Phase { Held, Release };
     Phase m_phase = Phase::Held;
     uint64_t m_phaseStart = 0;   // output frame the phase began at
     double m_phaseFrom = 1.0;    // and the speed it began from

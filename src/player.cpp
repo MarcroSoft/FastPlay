@@ -436,6 +436,8 @@ void FreeCurrentStream() {
     UnloadCurrent();
 }
 
+static bool CancelTapeStopping();  // (with the seek modes, below)
+
 // Play (restart if playing, resume if paused/stopped)
 void Play() {
     if (!audio::IsLoaded()) {
@@ -452,6 +454,9 @@ void Play() {
         return;
     }
 
+    // Pressed while the tape slows for a pause or stop: that is called off, and it
+    // plays on from where the tape got to
+    if (CancelTapeStopping()) return;
     if (IsPlaying() && !g_isLiveStream) {
         // Already playing - restart from beginning
         JumpTo(0);
@@ -621,21 +626,20 @@ void SpeakSeekMode() {
 static void ScrubWoundDown() {
     const ScrubEnding ending = g_scrubEnding;
     g_scrubEnding = ScrubEnding::None;
-    if (!audio::IsScrubbing()) return;  // something else happened meanwhile
+    // (Unless something else happened meanwhile)
     switch (ending) {
         case ScrubEnding::Release:
-            FinishScrubbing();
+            if (audio::IsScrubbing()) FinishScrubbing();
             break;
         case ScrubEnding::Pause:
-            audio::Pause();
-            audio::StopScrub();  // ready to play on from where the tape stopped
+            if (!audio::IsTapeStopping()) break;
+            audio::Pause();  // ready to play on from where the tape stopped
             if (g_rewindOnPauseMs > 0) Seek(-g_rewindOnPauseMs / 1000.0);
             UpdateWindowTitle();
             UpdateStatusBar();
             break;
         case ScrubEnding::Stop:
-            audio::StopScrub();
-            StopNow();
+            if (audio::IsTapeStopping()) StopNow();
             break;
         case ScrubEnding::None:
             break;
@@ -652,12 +656,23 @@ static bool TapeStopFirst(bool stopping) {
 }
 
 static bool TapeStopping() {
-    // (Still the same tape: a new track since ends it)
-    return (g_scrubEnding == ScrubEnding::Pause || g_scrubEnding == ScrubEnding::Stop) && audio::IsScrubbing();
+    // (Still the same tape: a new track or a seek since ends it)
+    return (g_scrubEnding == ScrubEnding::Pause || g_scrubEnding == ScrubEnding::Stop) && audio::IsTapeStopping();
 }
 
 static void TapeStopNow() {
     ScrubWoundDown();
+}
+
+// The tape stop is called off: playing on from where the tape got to. False if
+// none was under way.
+static bool CancelTapeStopping() {
+    if (!TapeStopping()) return false;
+    g_scrubEnding = ScrubEnding::None;  // nothing to pause or stop once it is down
+    audio::CancelTapeStop();
+    UpdateWindowTitle();
+    UpdateStatusBar();
+    return true;
 }
 
 void StartScrubbing(int direction) {

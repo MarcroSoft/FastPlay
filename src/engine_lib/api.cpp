@@ -702,6 +702,11 @@ FPE_API int fpe_tape_stop(fpe_player* player) {
     return p && p->engineReady && p->state == FPE_STATE_PLAYING && p->engine.TapeStop() ? 1 : 0;
 }
 
+FPE_API int fpe_tape_stop_cancel(fpe_player* player) {
+    Locked p(player);
+    return p && p->engineReady && p->engine.CancelTapeStop() ? 1 : 0;
+}
+
 // ---- effects ----
 
 FPE_API int fpe_effect_count(void) { return static_cast<int>(DSPEffectType::COUNT); }
