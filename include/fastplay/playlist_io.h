@@ -11,6 +11,10 @@
 
 bool IsSupportedAudioExt(const std::wstring& ext);
 
+// A track of an audio CD (a .cda file, on Windows). Opening one brings the rest of
+// the disc with it, whether or not single files load their whole folder.
+bool IsCdTrack(const std::wstring& path);
+
 // Replace outFiles with every supported file in filePath's folder, and return the
 // index of filePath among them.
 int ExpandFileToFolder(const std::wstring& filePath, std::vector<std::wstring>& outFiles);

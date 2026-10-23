@@ -173,6 +173,16 @@ bool IsSupportedAudioExt(const std::wstring& ext) {
     return false;
 }
 
+bool IsCdTrack(const std::wstring& path) {
+#ifdef _WIN32
+    size_t dot = path.find_last_of(L'.');
+    return dot != std::wstring::npos && WStrICmp(path.c_str() + dot, L".cda") == 0;
+#else
+    (void)path;
+    return false;
+#endif
+}
+
 // Expand a single file to all audio files in its folder
 // Returns the index of the original file in the expanded list
 int ExpandFileToFolder(const std::wstring& filePath, std::vector<std::wstring>& outFiles) {
