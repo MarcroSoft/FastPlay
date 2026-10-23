@@ -156,7 +156,7 @@ bool MainFrame::Initialize() {
 
     if (!g_playlist.empty()) {
         int startIndex = 0;
-        if (g_loadFolder && g_playlist.size() == 1) {
+        if (g_playlist.size() == 1 && (g_loadFolder || IsCdTrack(g_playlist[0]))) {
             std::wstring singleFile = g_playlist[0];
             startIndex = ExpandFileToFolder(singleFile, g_playlist);
         }
@@ -1120,7 +1120,7 @@ void MainFrame::OnBatchTimer(wxTimerEvent&) {
     if (g_pendingFiles.empty()) return;
 
     int startIndex = 0;
-    if (g_loadFolder && g_pendingFiles.size() == 1) {
+    if (g_pendingFiles.size() == 1 && (g_loadFolder || IsCdTrack(g_pendingFiles[0]))) {
         startIndex = ExpandFileToFolder(g_pendingFiles[0], g_playlist);
         g_pendingFiles.clear();
     } else {

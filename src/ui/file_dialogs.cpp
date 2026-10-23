@@ -36,8 +36,8 @@ void ShowOpenDialog() {
         std::wstring path = WS(paths[0]);
         if (IsPlaylistFile(path)) {
             g_playlist = ParsePlaylist(path);
-        } else if (g_loadFolder) {
-            // Expand to folder if option enabled
+        } else if (g_loadFolder || IsCdTrack(path)) {
+            // Expand to folder if option enabled (a CD track: the whole disc)
             startIndex = ExpandFileToFolder(path, g_playlist);
         } else {
             g_playlist.push_back(path);

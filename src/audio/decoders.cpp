@@ -1,5 +1,6 @@
 // Which decoder plays what: SpessaSynth for MIDI, libopenmpt for tracker modules,
-// FDK AAC for xHE-AAC MP4 files, FFmpeg for the rest.
+// FDK AAC for xHE-AAC MP4 files, the drive itself for audio CD tracks (Windows),
+// FFmpeg for the rest.
 
 #include "audio.h"
 #include "audio_internal.h"
@@ -35,6 +36,11 @@ std::unique_ptr<Decoder> OpenDecoder(const std::wstring& pathOrUrl, std::wstring
         if (HasExtension(pathOrUrl, {L".m4a", L".m4b", L".mp4"}) && IsXheAacFile(pathOrUrl)) {
             return OpenXheAacDecoder(pathOrUrl, error);
         }
+#ifdef _WIN32
+        if (HasExtension(pathOrUrl, {L".cda"})) {
+            return OpenCdDecoder(pathOrUrl, error);
+        }
+#endif
     }
     return OpenFfmpegDecoder(pathOrUrl, error);
 }

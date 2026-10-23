@@ -160,7 +160,10 @@ bool IsSupportedAudioExt(const std::wstring& ext) {
         L".mp3", L".wav", L".ogg", L".oga", L".flac", L".m4a", L".m4b", L".wma", L".aac",
         L".opus", L".aiff", L".ape", L".wv", L".mid", L".midi", L".dff", L".dsf",
         L".aif", L".mp2", L".m4r", L".mka", L".mpc", L".tta", L".tak", L".caf", L".w64",
-        L".ac3", L".dts", L".rmi", L".mod", L".xm", L".it", L".s3m", L".mptm", L".mo3"
+        L".ac3", L".dts", L".rmi", L".mod", L".xm", L".it", L".s3m", L".mptm", L".mo3",
+#ifdef _WIN32
+        L".cda",
+#endif
     };
     std::wstring lowerExt = ext;
     for (auto& c : lowerExt) c = towlower(c);
@@ -168,6 +171,16 @@ bool IsSupportedAudioExt(const std::wstring& ext) {
         if (lowerExt == e) return true;
     }
     return false;
+}
+
+bool IsCdTrack(const std::wstring& path) {
+#ifdef _WIN32
+    size_t dot = path.find_last_of(L'.');
+    return dot != std::wstring::npos && WStrICmp(path.c_str() + dot, L".cda") == 0;
+#else
+    (void)path;
+    return false;
+#endif
 }
 
 // Expand a single file to all audio files in its folder
