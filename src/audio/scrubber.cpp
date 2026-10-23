@@ -18,8 +18,6 @@ const double kSpringDoubling = 0.5;
 // Tape: seconds to spin up to speed, and let go of, back down
 const double kTapeSpinUp = 0.25;
 const double kTapeSpinDown = 0.4;
-// A tape stop: seconds from normal speed to a standstill
-const double kTapeStopSeconds = 0.6;
 // Slower than this is a standstill: silence. Below kQuietSpeed it fades, so the
 // last rumble does not end in a thump.
 const double kStopped = 0.01;
@@ -70,9 +68,6 @@ Scrubber::Scrubber(ScrubStyle style, int direction, float speed, int sourceRate,
     if (begin == Begin::WindDown) {
         m_phase = Phase::Release;
         m_phaseFrom = fromSpeed;
-    } else if (begin == Begin::TapeStop) {
-        m_phase = Phase::TapeStop;
-        m_phaseFrom = 1.0;
     }
     m_points.push_back({0, start});
 }
@@ -100,16 +95,12 @@ double Scrubber::Speed() const {
         case Phase::Held:
             (void)top;
             return HeardSpeed(m_produced);
-        case Phase::Release: {
+        case Phase::Release:
+        default: {
             const double t = std::min(1.0, since / kTapeSpinDown);
             // Forward, back down to normal speed (evenly in pitch); backward, slowing
             // to a stop before it plays on forward
             if (m_direction > 0) return std::pow(std::max(1.0, m_phaseFrom), 1.0 - t);
-            return m_phaseFrom * (1.0 - t);
-        }
-        case Phase::TapeStop:
-        default: {
-            const double t = std::min(1.0, since / kTapeStopSeconds);
             return m_phaseFrom * (1.0 - t);
         }
     }
