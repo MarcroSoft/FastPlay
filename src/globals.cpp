@@ -116,6 +116,7 @@ const FileAssoc g_fileAssocs[] = {
     {L".umx", L"UMX Audio"},
     {L".669", L"669 Audio"},
     {L".mo3", L"MO3 Audio"},
+    {L".mptm", L"MPTM Audio"},
     // Playlist formats
     {L".m3u", L"M3U Playlist"},
     {L".m3u8", L"M3U8 Playlist"},
