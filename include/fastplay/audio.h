@@ -191,6 +191,9 @@ bool ReleaseScrub();
 bool TapeStop();
 // A tape stop is slowing, or has stopped and waits for the pause or stop.
 bool IsTapeStopping();
+// Calls a tape stop off: it plays on at normal speed from where the tape got to.
+// False if there was none.
+bool CancelTapeStop();
 // Called on the UI thread when a release or tape stop has wound down.
 void SetScrubEndHandler(std::function<void()> handler);
 
@@ -293,6 +296,7 @@ public:
     bool ReleaseScrub();
     bool TapeStop();
     bool IsTapeStopping();
+    bool CancelTapeStop();
     void SetScrubEndHandler(std::function<void()> handler);
 
     void SetTempo(float percent);

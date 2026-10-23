@@ -331,6 +331,8 @@ struct Player::Impl {
     uint64_t tapeElapsed = 0;       // output frames since it began
     double tapePos = 0;             // between tapeA and tapeB
     float tapeA[kChannels] = {}, tapeB[kChannels] = {};
+    float tapeLevel = 1.0f;         // how loud it last was (it fades on the way to a standstill)
+    bool tapeHeard = false;         // the last block was the tape's
     std::vector<float> tapeIn;      // the frames a block takes from the ring
 
     // Playing in reverse (UI thread, under mixMutex): the source read backward
@@ -461,8 +463,15 @@ void Callback(Engine& g, float* out, ma_uint32 frameCount) {
                 const ma_uint32 took = TapeStopBlock(g, out, frameCount);
                 done = frameCount;
                 g.played += took;
+                g.tapeHeard = true;
                 if (took > 0) g.mixWake.notify_one();
             } else if (g.primed.load()) {
+                // A tape stop called off (playing on): faded back up from as quiet as
+                // it had got, so the sound does not jump
+                if (g.tapeHeard) {
+                    g.fadeLevel = std::min(g.fadeLevel, g.tapeLevel);
+                    g.tapeHeard = false;
+                }
                 ma_uint32 buffered = ma_pcm_rb_available_read(&g.ring);
                 if (buffered < g.minBuffered.load()) g.minBuffered = buffered;
                 if (buffered < frameCount && !g.producerEnded.load() && !g.mixWaiting.load()) g.underruns++;
@@ -588,6 +597,7 @@ ma_uint32 TapeStopBlock(Engine& g, float* out, ma_uint32 frameCount) {
         const double s = speed(g.tapeElapsed);
         if (s < kTapeStopped) {
             out[i * kChannels] = out[i * kChannels + 1] = 0.0f;
+            g.tapeLevel = 0.0f;
             if (!g.tapeStandstill) {
                 g.tapeStandstill = true;
                 RunOnUiThread([handler = g.scrubEndHandler]() {
@@ -598,6 +608,7 @@ ma_uint32 TapeStopBlock(Engine& g, float* out, ma_uint32 frameCount) {
         }
         // Fading to nothing on the way to the standstill
         const float level = static_cast<float>(std::min(1.0, (s - kTapeStopped) / (kTapeQuiet - kTapeStopped)));
+        g.tapeLevel = level;
         const float f = static_cast<float>(g.tapePos);
         for (int ch = 0; ch < kChannels; ch++) {
             out[i * kChannels + ch] = (g.tapeA[ch] + (g.tapeB[ch] - g.tapeA[ch]) * f) * level;
@@ -1516,6 +1527,13 @@ bool Player::IsTapeStopping() {
     return g.loaded && g.tapeStop.load();
 }
 
+bool Player::CancelTapeStop() {
+    Engine& g = *m;
+    if (!g.loaded || !g.tapeStop.load()) return false;
+    EndTapeStop(g);  // on at normal speed from where the tape got to
+    return true;
+}
+
 void Player::SetScrubEndHandler(std::function<void()> handler) {
     Engine& g = *m;
     g.scrubEndHandler = std::move(handler);
@@ -1657,6 +1675,7 @@ bool IsReverse() { return DefaultPlayer().IsReverse(); }
 bool ReleaseScrub() { return DefaultPlayer().ReleaseScrub(); }
 bool TapeStop() { return DefaultPlayer().TapeStop(); }
 bool IsTapeStopping() { return DefaultPlayer().IsTapeStopping(); }
+bool CancelTapeStop() { return DefaultPlayer().CancelTapeStop(); }
 void SetScrubEndHandler(std::function<void()> handler) { return DefaultPlayer().SetScrubEndHandler(std::move(handler)); }
 void SetTempo(float percent) { return DefaultPlayer().SetTempo(percent); }
 void SetPitch(float semitones) { return DefaultPlayer().SetPitch(semitones); }
