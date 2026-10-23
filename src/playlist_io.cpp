@@ -160,7 +160,7 @@ bool IsSupportedAudioExt(const std::wstring& ext) {
         L".mp3", L".wav", L".ogg", L".oga", L".flac", L".m4a", L".m4b", L".wma", L".aac",
         L".opus", L".aiff", L".ape", L".wv", L".mid", L".midi", L".dff", L".dsf",
         L".aif", L".mp2", L".m4r", L".mka", L".mpc", L".tta", L".tak", L".caf", L".w64",
-        L".ac3", L".dts", L".rmi", L".mod", L".xm", L".it", L".s3m", L".mptm", L".mo3",
+        L".ac3", L".dts", L".rmi", L".mod", L".xm", L".it", L".s3m", L".mptm", L".mo3", L".669",
 #ifdef _WIN32
         L".cda",
 #endif
