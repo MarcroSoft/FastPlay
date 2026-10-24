@@ -26,6 +26,16 @@ const double kQuietSpeed = 0.15;
 const int kSpeedStep = 64;
 // Stretched frames made at a time (spring)
 const int kStretchBlock = 256;
+#ifdef USE_SIGNALSMITH
+// Tape's pitch shifter: its block, and the step between blocks. Shorter than the
+// tempo processor's (0.12 s), so a change of speed is heard sooner (it runs about
+// a block behind); scrubbing goes by too quickly for the finer low end to tell.
+const double kShiftBlockSeconds = 0.08;
+const double kShiftIntervalSeconds = 0.02;
+
+// The pitch a transposer is to add for `pitch` semitones at `rate`
+float Semitones(float pitch, float rate) { return pitch + 12.0f * std::log2(rate); }
+#endif
 
 }  // namespace
 
@@ -34,6 +44,7 @@ struct Scrubber::Stretch {
     signalsmith::stretch::SignalsmithStretch<float> stretcher;
 #endif
     bool started = false;
+    float transpose = 0.0f;   // the semitones the stretcher was set to
     double inFraction = 0.0;  // the fraction of an input frame carried between blocks
     std::vector<float> interleaved;
     std::vector<float> in[kChannels], out[kChannels];
@@ -45,6 +56,32 @@ struct Scrubber::Stretch {
             in[ch].resize(static_cast<size_t>(std::max(frames, 1)));
             for (int i = 0; i < frames; i++) in[ch][i] = interleaved[static_cast<size_t>(i) * kChannels + ch];
             inPtrs[ch] = in[ch].data();
+        }
+    }
+};
+
+// Tape's pitch shifter: the tape's output, transposed by the pitch and no faster
+// or slower. It is primed (outputSeek) with the tape's first moment, so its
+// output starts with the tape's start rather than after its latency; from then
+// on the tape is made that far ahead of what it gives out.
+struct Scrubber::Shift {
+#ifdef USE_SIGNALSMITH
+    signalsmith::stretch::SignalsmithStretch<float> stretcher;
+#endif
+    bool started = false;
+    float transpose = 0.0f;
+    std::vector<float> made;  // interleaved: the tape's output (the priming, until it is enough)
+    std::vector<float> in[kChannels], out[kChannels];
+    float* inPtrs[kChannels] = {};
+    float* outPtrs[kChannels] = {};
+
+    void Split(const float* interleaved, int frames) {
+        for (int ch = 0; ch < kChannels; ch++) {
+            in[ch].resize(static_cast<size_t>(std::max(frames, 1)));
+            out[ch].resize(static_cast<size_t>(std::max(frames, 1)));
+            for (int i = 0; i < frames; i++) in[ch][i] = interleaved[static_cast<size_t>(i) * kChannels + ch];
+            inPtrs[ch] = in[ch].data();
+            outPtrs[ch] = out[ch].data();
         }
     }
 };
@@ -107,6 +144,65 @@ double Scrubber::Speed() const {
 }
 
 int Scrubber::Fill(PcmSource& source, float* out, int frames) {
+#ifdef USE_SIGNALSMITH
+    if (!m_shiftChecked) {
+        m_shiftChecked = true;
+        if (!m_stretch && m_pitch.load() != 0.0f) {
+            m_shift = std::make_unique<Shift>();
+            m_shift->stretcher.configure(kChannels, static_cast<int>(m_outputRate * kShiftBlockSeconds),
+                                         static_cast<int>(m_outputRate * kShiftIntervalSeconds));
+        }
+    }
+    if (m_shift) return FillShifted(source, out, frames);
+#endif
+    return Generate(source, out, frames);
+}
+
+// Tape through the pitch shifter: primed first with the tape's first moment (as
+// much as its latency), then each block of tape goes through and the same number
+// of frames comes out, the tape's from that moment before.
+int Scrubber::FillShifted(PcmSource& source, float* out, int frames) {
+#ifdef USE_SIGNALSMITH
+    Shift& s = *m_shift;
+    const float transpose = m_pitch.load();
+    if (!s.started || transpose != s.transpose) {
+        s.stretcher.setTransposeSemitones(transpose);
+        s.transpose = transpose;
+    }
+    if (!s.started) {
+        const int prime = s.stretcher.outputSeekLength(1.0f);
+        const size_t have = s.made.size() / kChannels;
+        if (have < static_cast<size_t>(prime)) {
+            s.made.resize(static_cast<size_t>(prime) * kChannels);
+            const int got = Generate(source, s.made.data() + have * kChannels, prime - static_cast<int>(have));
+            s.made.resize((have + static_cast<size_t>(got)) * kChannels);
+            if (s.made.size() / kChannels < static_cast<size_t>(prime)) return 0;  // the decoder is behind
+        }
+        s.Split(s.made.data(), prime);
+        s.stretcher.outputSeek(s.inPtrs, prime);
+        s.started = true;
+    }
+    s.made.resize(static_cast<size_t>(frames) * kChannels);
+    const int got = Generate(source, s.made.data(), frames);
+    if (got <= 0) return got;
+    s.Split(s.made.data(), got);
+    s.stretcher.process(s.inPtrs, got, s.outPtrs, got);
+    for (int i = 0; i < got; i++) {
+        out[static_cast<size_t>(i) * kChannels] = s.out[0][i];
+        out[static_cast<size_t>(i) * kChannels + 1] = s.out[1][i];
+    }
+    return got;
+#else
+    (void)source;
+    (void)out;
+    (void)frames;
+    return 0;
+#endif
+}
+
+// The tape (or spring's stretched audio) itself, at the output rate
+int Scrubber::Generate(PcmSource& source, float* out, int frames) {
+    const double rate = m_rate.load();
     int done = 0;
     while (done < frames) {
         const int n = std::min(kSpeedStep, frames - done);
@@ -131,10 +227,11 @@ int Scrubber::Fill(PcmSource& source, float* out, int frames) {
                 break;
             }
         }
-        // Tape plays the source faster; spring's stretcher has already done that
-        const double step = (m_stretch ? 1.0 : speed) * m_sourceRate / m_outputRate;
+        // Tape plays the source faster (and the rate faster or slower again);
+        // spring's stretcher has already done that
+        const double step = (m_stretch ? 1.0 : speed * rate) * m_sourceRate / m_outputRate;
         const size_t need = static_cast<size_t>(m_pos + n * step) + 2;
-        if (FifoFrames() < need && !Supply(source, need, speed)) {
+        if (FifoFrames() < need && !Supply(source, need, speed * rate)) {
             if (!m_sourceEnded) break;  // the decoder is behind
             // At the start or the end: silence, staying there, ramped down to from
             // the last sound over a few milliseconds so it doesn't click
@@ -159,7 +256,7 @@ int Scrubber::Fill(PcmSource& source, float* out, int frames) {
         m_produced += static_cast<uint64_t>(n);
     }
     if (done > 0) {
-        m_points.push_back({m_produced, SourcePosition(Speed())});
+        m_points.push_back({m_produced, SourcePosition(Speed() * rate)});
         if (m_points.size() > 4096) m_points.pop_front();
     }
     return done;
@@ -203,6 +300,12 @@ bool Scrubber::Supply(PcmSource& source, size_t need, double speed) {
     }
 #ifdef USE_SIGNALSMITH
     Stretch& s = *m_stretch;
+    // At the pitch playing has: the pitch, and what the rate adds to it
+    const float transpose = Semitones(m_pitch.load(), m_rate.load());
+    if (!s.started || transpose != s.transpose) {
+        s.stretcher.setTransposeSemitones(transpose);
+        s.transpose = transpose;
+    }
     if (!s.started) {
         // Pre-roll, so the first output lines up with where scrubbing began
         const int seekLength = s.stretcher.outputSeekLength(static_cast<float>(speed));

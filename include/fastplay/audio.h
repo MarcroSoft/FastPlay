@@ -173,7 +173,9 @@ bool LiveRange(double& start, double& live);
 // faster, pitch and all, at `speed` times normal once spun up; spring keeps the
 // pitch and winds up the longer it goes, up to `speed`. StopScrub() carries on
 // playing normally from wherever scrubbing got to. Not for live streams,
-// unless kept for rewinding.
+// unless kept for rewinding. It keeps the pitch and rate set (SetPitch, SetRate):
+// tape runs the rate faster still, with the pitch on top; spring stays at the
+// pitch playing has. The tempo doesn't come into it: the scrubbing sets the speed.
 enum class ScrubStyle { Tape, Spring };
 bool StartScrub(ScrubStyle style, int direction, float speed);
 void SetScrubSpeed(float speed);
