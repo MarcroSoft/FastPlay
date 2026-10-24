@@ -16,6 +16,9 @@
 #include <wx/ipc.h>
 #include <wx/snglinst.h>
 #include <wx/filename.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include <chrono>
 #include <cstdlib>
 #include <memory>
@@ -26,13 +29,24 @@ namespace {
 // Files are handed from a newly started FastPlay to the one already running.
 const char* kIpcService = "FastPlay";
 const char* kIpcTopic = "files";
+// Sent instead when it was started without files (from the taskbar, a shortcut,
+// Windows+number): the running one shows its window, hidden to the tray or not.
+// No file is called this ('<' and '>' can't be in a Windows path).
+const char* kIpcShow = "<show>";
 
-// Receives the files, one Execute() per path.
+// Receives the files, one Execute() per path, or kIpcShow.
 class FileConnection : public wxConnection {
 public:
     bool OnExecute(const wxString&, const void* data, size_t size, wxIPCFormat format) override {
-        std::wstring path = WS(GetTextFromData(data, size, format));
+        wxString text = GetTextFromData(data, size, format);
         // Handle it after the call returns, so the sender is not kept waiting on playback.
+        if (text == kIpcShow) {
+            RunOnUiThread([]() {
+                if (MainFrame* frame = GetMainFrame()) frame->RestoreFromTray();
+            });
+            return true;
+        }
+        std::wstring path = WS(text);
         RunOnUiThread([path]() {
             if (MainFrame* frame = GetMainFrame()) frame->ReceiveFile(path);
         });
@@ -89,9 +103,16 @@ bool FastPlayApp::HandOverToRunningInstance(const std::vector<std::wstring>& fil
     wxClient client;
     std::unique_ptr<wxConnectionBase> connection(client.MakeConnection("localhost", kIpcService, kIpcTopic));
     if (!connection) return false;
+#ifdef _WIN32
+    // Windows lets only the program the user just started come to the front;
+    // this one was, so it passes that on to the running one, which would
+    // otherwise only flash on the taskbar when it shows its window
+    AllowSetForegroundWindow(ASFW_ANY);
+#endif
     for (const auto& file : files) {
         connection->Execute(WX(file));
     }
+    if (files.empty()) connection->Execute(wxString(kIpcShow));
     connection->Disconnect();
     return true;
 }
@@ -108,7 +129,8 @@ bool FastPlayApp::OnInit() {
     PlatformStartup();
 
     // Single instance:
-    // - multiple instances not allowed: always hand over to the running one
+    // - multiple instances not allowed: always hand over to the running one (the
+    //   files, or without any, a request that it show its window)
     // - multiple instances allowed and started with files: hand the files over
     // - multiple instances allowed and started without files: start a new one
     std::vector<std::wstring> files = ExistingPathArgs();
