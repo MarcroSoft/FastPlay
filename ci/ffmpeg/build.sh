@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Build FastPlay's FFmpeg: audio only (the demuxers, decoders and parsers of the
 # formats FastPlay plays, the network protocols for streams, and the FLAC encoder
-# for recording), as static libraries, with no outside libraries but Android's
-# TLS (see below). LGPL. Our few changes to FFmpeg are in ci/ffmpeg/patches.
+# for recording), as static libraries, with no outside libraries but Codec 2 (for
+# its decoder; see build_codec2) and Android's TLS (see below). LGPL. Our few
+# changes to FFmpeg are in ci/ffmpeg/patches.
 #
 #   ci/ffmpeg/build.sh windows <out-dir>   (in MSYS2, with the MSVC tools on PATH)
 #   ci/ffmpeg/build.sh macos <out-dir>     (a universal arm64 + x86_64 build)
@@ -11,7 +12,8 @@
 #                                           ANDROID_NDK_HOME names the NDK)
 #
 # <out-dir> receives include/, lib/ and BUILDINFO.txt. The version to build is in
-# ci/ffmpeg/VERSION (an FFmpeg tag). The iOS build's libraries are in lib/iphoneos
+# ci/ffmpeg/VERSION (an FFmpeg tag), Codec 2's in ci/ffmpeg/CODEC2_VERSION; lib/ has
+# Codec 2's library beside FFmpeg's. The iOS build's libraries are in lib/iphoneos
 # and lib/iphonesimulator, as Xcode names the two; Android's in lib/<ABI>, as
 # Gradle names them.
 set -euo pipefail
@@ -20,12 +22,13 @@ here="$(cd "$(dirname "$0")" && pwd)"
 platform="$1"
 out="$(mkdir -p "$2" && cd "$2" && pwd)"
 version="$(tr -d ' \r\n' < "$here/VERSION")"
+codec2_version="$(tr -d ' \r\n' < "$here/CODEC2_VERSION")"
 work="${FFMPEG_WORK:-$here/work}"
 
 demuxers=(
     aac ac3 ac4 aiff amr ape asf au caf dsf dts dtshd eac3 flac hls iff loas
     matroska mlp mov mp3 mpc mpc8 mpegts ogg oma rm shorten tak truehd tta voc
-    w64 wav wv xwma 'pcm_*'
+    w64 wav wv xwma 'pcm_*' codec2
 )
 decoders=(
     aac aac_latm ac3 eac3 alac als amrnb amrwb ape atrac1 atrac3 atrac3p atrac9
@@ -33,7 +36,7 @@ decoders=(
     truehd mp1 mp1float mp2 mp2float mp3 mp3float mp3adu mp3adufloat mp3on4
     mp3on4float mpc7 mpc8 nellymoser opus qdm2 qdmc ra_144 ra_288 ralf shorten
     sipr speex tak truespeech tta twinvq vorbis wavpack wmalossless wmapro wmav1
-    wmav2 wmavoice xma1 xma2 'pcm_*' 'adpcm_*'
+    wmav2 wmavoice xma1 xma2 'pcm_*' 'adpcm_*' libcodec2
 )
 parsers=(aac aac_latm ac3 amr cook dca dolby_e flac gsm mlp mpegaudio opus sipr tak vorbis)
 protocols=(file http https httpproxy tcp tls hls crypto data)
@@ -46,6 +49,7 @@ common=(
     --enable-avformat --enable-avcodec --enable-swresample
     --enable-network
     --enable-encoder=flac --enable-muxer=flac
+    --enable-libcodec2
 )
 for d in "${demuxers[@]}"; do common+=(--enable-demuxer="$d"); done
 for d in "${decoders[@]}"; do common+=(--enable-decoder="$d"); done
@@ -77,9 +81,60 @@ fetch() {
             basename "$p" >> "$applied"
         done
     }
+    if [ ! -d "$work/codec2" ]; then
+        git clone --depth 1 --branch "$codec2_version" https://github.com/drowe67/codec2.git "$work/codec2"
+    fi
 }
 
-# Configure and build one architecture into $2, from a copy of the source.
+# A path as the native tools take it: on Windows, C:/... rather than MSYS2's /c/...
+native() {
+    if [ "$platform" = windows ]; then cygpath -m "$1"; else echo "$1"; fi
+}
+
+# Codec 2's codebooks are C that its generate_codebook makes from tables. Made here
+# once, with the host's compiler, so that a cross build needs no host tool.
+codec2_codebooks() {
+    local src="$work/codec2/src" cb="$work/codec2-codebooks" gen
+    rm -rf "$cb"
+    mkdir -p "$cb"
+    if [ "$platform" = windows ]; then
+        (cd "$cb" && cl -nologo -O2 -Fegenerate_codebook.exe "$(native "$src/generate_codebook.c")" > /dev/null)
+        gen="$cb/generate_codebook.exe"
+    else
+        cc -O2 -o "$cb/generate_codebook" "$src/generate_codebook.c" -lm
+        gen="$cb/generate_codebook"
+    fi
+    (
+        cd "$src/codebook"
+        "$gen" lsp_cb lsp{1..10}.txt > "$cb/codebook.c"
+        "$gen" lsp_cbd dlsp{1..10}.txt > "$cb/codebookd.c"
+        "$gen" lsp_cbjmv lspjmv{1..3}.txt > "$cb/codebookjmv.c"
+        "$gen" ge_cb gecb.txt > "$cb/codebookge.c"
+        "$gen" newamp1vq_cb train_120_1.txt train_120_2.txt > "$cb/codebooknewamp1.c"
+        "$gen" newamp1_energy_cb newamp1_energy_q.txt > "$cb/codebooknewamp1_energy.c"
+        "$gen" newamp2vq_cb codes_450.txt > "$cb/codebooknewamp2.c"
+        "$gen" newamp2_energy_cb newamp2_energy_q.txt > "$cb/codebooknewamp2_energy.c"
+    )
+}
+
+# Codec 2's speech codec (ci/ffmpeg/codec2), for FFmpeg's libcodec2 decoder, as a
+# static library in $2: the prefix FFmpeg is then built into, so that build_one
+# finds it and its library goes out with FFmpeg's. The rest is CMake's settings
+# for the platform.
+build_codec2() {
+    local name="$1" prefix="$2"
+    shift 2
+    rm -rf "$work/codec2-build-$name"
+    cmake -S "$(native "$here/codec2")" -B "$(native "$work/codec2-build-$name")" \
+        -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$(native "$prefix")" \
+        -DCODEC2_SRC="$(native "$work/codec2")" -DCODEC2_TAG="$codec2_version" \
+        -DCODEC2_CODEBOOKS="$(native "$work/codec2-codebooks")" "$@"
+    cmake --build "$(native "$work/codec2-build-$name")" --parallel "${JOBS:-4}"
+    cmake --install "$(native "$work/codec2-build-$name")"
+}
+
+# Configure and build one architecture into $2, from a copy of the source, with
+# the Codec 2 that build_codec2 put there.
 build_one() {
     local name="$1" prefix="$2"
     shift 2
@@ -87,7 +142,15 @@ build_one() {
     mkdir -p "$work/build-$name"
     (
         cd "$work/build-$name"
-        "$work/src/configure" --prefix="$prefix" "${common[@]}" "$@" \
+        # Codec 2's library: MSVC's linker finds it through LIB, the others through -L
+        codec2_lib=(--extra-ldflags="-L$prefix/lib")
+        if [ "$platform" = windows ]; then
+            export LIB="$(cygpath -w "$prefix/lib");${LIB:-}"
+            codec2_lib=()
+        fi
+        "$work/src/configure" --prefix="$prefix" "${common[@]}" \
+            --extra-cflags="-I$(native "$prefix/include")" ${codec2_lib[@]+"${codec2_lib[@]}"} \
+            "$@" \
             || { tail -n 60 ffbuild/config.log; exit 1; }
         make -j"${JOBS:-4}"
         make install
@@ -95,10 +158,17 @@ build_one() {
 }
 
 fetch
+codec2_codebooks
 rm -rf "$out/include" "$out/lib"
 
 case "$platform" in
     windows)
+        # Codec 2 with clang-cl, as MSVC has no variable-length arrays: LLVM's on
+        # PATH, or the one Visual Studio comes with
+        clang_cl="$(command -v clang-cl || true)"
+        [ -n "$clang_cl" ] || clang_cl="$(cygpath -u "${VCINSTALLDIR:-}Tools/Llvm/x64/bin/clang-cl.exe")"
+        [ -x "$clang_cl" ] || { echo "clang-cl not found (LLVM, or Visual Studio's C++ Clang tools)" >&2; exit 1; }
+        build_codec2 x64 "$work/install-x64" -G "NMake Makefiles" -DCMAKE_C_COMPILER="$(native "$clang_cl")"
         # Static runtime (/MT), as FastPlay; Windows 7 (0x0601) is FFmpeg's own floor.
         build_one x64 "$work/install-x64" \
             --toolchain=msvc --arch=x86_64 --target-os=win64 \
@@ -122,6 +192,8 @@ case "$platform" in
             extra=()
             # Intel slice without the x86 assembly (it needs nasm; audio decoding is cheap)
             [ "$arch" = x86_64 ] && extra+=(--disable-x86asm)
+            build_codec2 "$arch" "$work/install-$arch" \
+                -DCMAKE_OSX_ARCHITECTURES="$arch" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
             build_one "$arch" "$work/install-$arch" \
                 --enable-cross-compile --target-os=darwin --arch="$arch" \
                 --cc="clang -arch $arch" \
@@ -143,6 +215,9 @@ case "$platform" in
         ios_slice() {
             local name="$1" sdk="$2" arch="$3" minflag="$4"
             shift 4
+            build_codec2 "$name" "$work/install-$name" \
+                -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT="$sdk" \
+                -DCMAKE_OSX_ARCHITECTURES="$arch" -DCMAKE_OSX_DEPLOYMENT_TARGET="$ios_min"
             build_one "$name" "$work/install-$name" \
                 --enable-cross-compile --target-os=darwin --arch="$arch" \
                 --cc="xcrun -sdk $sdk clang -arch $arch" \
@@ -191,12 +266,16 @@ case "$platform" in
                 -DUSE_SHARED_MBEDTLS_LIBRARY=OFF -DUSE_STATIC_MBEDTLS_LIBRARY=ON
             cmake --build "$work/mbedtls-build-$abi" --parallel "${JOBS:-4}"
             cmake --install "$work/mbedtls-build-$abi"
+            build_codec2 "android-$abi" "$work/install-android-$abi" \
+                -DCMAKE_TOOLCHAIN_FILE="$ndk/build/cmake/android.toolchain.cmake" \
+                -DANDROID_ABI="$abi" -DANDROID_PLATFORM="android-$api"
+            # (Codec 2 uses libm, which Android has apart from its C library)
             build_one "android-$abi" "$work/install-android-$abi" \
                 --enable-cross-compile --target-os=android --arch="$arch" \
                 --cc="$bin/$triple$api-clang" --cxx="$bin/$triple$api-clang++" \
                 --ar="$bin/llvm-ar" --nm="$bin/llvm-nm" --ranlib="$bin/llvm-ranlib" \
                 --strip="$bin/llvm-strip" \
-                --extra-cflags="-I$tls/include" --extra-ldflags="-L$tls/lib" \
+                --extra-cflags="-I$tls/include" --extra-ldflags="-L$tls/lib" --extra-libs=-lm \
                 --enable-version3 --enable-mbedtls --enable-zlib --enable-protocol=ftp \
                 --enable-protocol=udp \
                 "$@"
@@ -218,6 +297,7 @@ esac
 {
     echo "FFmpeg $version, audio only, built for FastPlay by ci/ffmpeg/build.sh ($platform)"
     echo "LGPL 2.1 or later; source: https://github.com/FFmpeg/FFmpeg/tree/$version"
+    echo "With Codec 2 $codec2_version's speech codec (lib/*codec2*), LGPL 2.1; source: https://github.com/drowe67/codec2/tree/$codec2_version"
 } > "$out/BUILDINFO.txt"
 cp "$work/src/COPYING.LGPLv2.1" "$out/COPYING.LGPLv2.1"
 echo "FFmpeg $version built into $out"

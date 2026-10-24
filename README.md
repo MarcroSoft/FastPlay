@@ -79,6 +79,7 @@ FastPlay/
 
 This project uses the following third-party libraries:
 - FFmpeg (LGPL 2.1 or later), built from source by ci/ffmpeg/build.sh
+- Codec 2 (LGPL 2.1), its speech codec built into FFmpeg by ci/ffmpeg/build.sh
 - miniaudio (public domain / MIT No Attribution)
 - SpessaSynth, C port by kode54 (Apache 2.0)
 - libopenmpt (BSD)

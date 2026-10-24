@@ -435,15 +435,16 @@ elseif(FASTPLAY_ANDROID)
     add_library(FastPlay STATIC ${FASTPLAY_SOURCES})
     set_target_properties(FastPlay PROPERTIES OUTPUT_NAME FastPlayCore)
     # What the app's JNI library builds against: FastPlay's headers, and FFmpeg's
-    # libraries for its ABI with mbed TLS (HTTPS) and what they use of Android
+    # libraries for its ABI with Codec 2, mbed TLS (HTTPS) and what they use of Android
     set(FASTPLAY_FFMPEG_LIB ${FASTPLAY_FFMPEG_DIR}/lib/${ANDROID_ABI})
     target_include_directories(FastPlay INTERFACE src src/audio include include/fastplay ${FASTPLAY_FFMPEG_DIR}/include)
     target_link_libraries(FastPlay PUBLIC
         ${FASTPLAY_FFMPEG_LIB}/libavformat.a ${FASTPLAY_FFMPEG_LIB}/libavcodec.a
         ${FASTPLAY_FFMPEG_LIB}/libswresample.a ${FASTPLAY_FFMPEG_LIB}/libavutil.a
+        ${FASTPLAY_FFMPEG_LIB}/libcodec2.a
         ${FASTPLAY_FFMPEG_LIB}/libmbedtls.a ${FASTPLAY_FFMPEG_LIB}/libmbedx509.a
         ${FASTPLAY_FFMPEG_LIB}/libmbedcrypto.a
-        z dl log)
+        z m dl log)
 else()
     add_executable(FastPlay WIN32 MACOSX_BUNDLE ${FASTPLAY_SOURCES})
 endif()
@@ -541,11 +542,12 @@ if(WIN32 AND FASTPLAY_SPEECH)
 endif()
 
 if(WIN32)
-    # FFmpeg's static libraries, and what they use of Windows (sockets, TLS through
-    # SChannel, random numbers)
+    # FFmpeg's static libraries with Codec 2, and what they use of Windows (sockets,
+    # TLS through SChannel, random numbers)
     target_link_libraries(FastPlay PRIVATE
         ${FASTPLAY_FFMPEG_DIR}/lib/avformat.lib ${FASTPLAY_FFMPEG_DIR}/lib/avcodec.lib
         ${FASTPLAY_FFMPEG_DIR}/lib/swresample.lib ${FASTPLAY_FFMPEG_DIR}/lib/avutil.lib
+        ${FASTPLAY_FFMPEG_DIR}/lib/codec2.lib
         ws2_32 secur32 ncrypt crypt32 bcrypt
         user32 comctl32 comdlg32 shell32 shlwapi advapi32 ole32 oleaut32
         uuid version psapi wininet winhttp)
@@ -558,11 +560,12 @@ if(WIN32)
 endif()
 
 if(APPLE AND NOT FASTPLAY_IOS)
-    # FFmpeg's static libraries (universal), with what they use of macOS (TLS through
-    # Secure Transport, zlib); miniaudio plays through Core Audio.
+    # FFmpeg's static libraries (universal) with Codec 2, and what they use of macOS
+    # (TLS through Secure Transport, zlib); miniaudio plays through Core Audio.
     target_link_libraries(FastPlay PRIVATE
         ${FASTPLAY_FFMPEG_DIR}/lib/libavformat.a ${FASTPLAY_FFMPEG_DIR}/lib/libavcodec.a
         ${FASTPLAY_FFMPEG_DIR}/lib/libswresample.a ${FASTPLAY_FFMPEG_DIR}/lib/libavutil.a
+        ${FASTPLAY_FFMPEG_DIR}/lib/libcodec2.a
         z "-framework Security" "-framework CoreFoundation" "-framework CoreAudio" "-framework AudioToolbox"
         "-framework AppKit" "-framework AVFoundation" "-framework Carbon"
         "-framework CoreServices" "-framework MediaPlayer")
