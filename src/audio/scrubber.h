@@ -12,6 +12,13 @@
 // it winds back down (to normal speed going forward, to a stop going back). Spring: time-stretched
 // (Signalsmith Stretch), so pitch stays, and it winds up the longer it is held,
 // doubling in speed every half second up to the top speed.
+//
+// Either way it starts from the sound as it plays (SetSound): the rate runs the
+// tape faster or slower still, and the pitch is kept on top, so scrubbing neither
+// drops to the file's own pitch nor jumps back when it ends. Spring's stretcher
+// transposes; tape, with a pitch set, goes through a pitch shifter of its own,
+// which is primed with the tape's first moment so it starts at once (what is
+// heard runs that moment, about 80 ms, behind a change of speed).
 
 #include "audio.h"
 #include "tempo_processor.h"
@@ -41,6 +48,13 @@ public:
     // Source seconds at output frame `played` (counted from the start of scrubbing)
     double PositionAt(uint64_t played);
     void SetSpeed(float speed) { m_topSpeed = speed; }
+    // The pitch (semitones) and rate (a multiplier of speed and pitch) playing has,
+    // for scrubbing to keep. Set before the first Fill(); a change after it is
+    // followed, except that tape set going without a pitch gets none until the next.
+    void SetSound(float pitch, float rate) {
+        m_pitch = pitch;
+        m_rate = rate > 0 ? rate : 1.0f;
+    }
     ScrubStyle Style() const { return m_style; }
     int Direction() const { return m_direction; }
     float TopSpeed() const { return m_topSpeed; }
@@ -54,6 +68,7 @@ public:
 
 private:
     struct Stretch;
+    struct Shift;
 
     enum class Phase { Held, Release };
     Phase m_phase = Phase::Held;
@@ -68,6 +83,9 @@ private:
     const double m_sourceRate, m_outputRate;
     const double m_start;
     std::unique_ptr<Stretch> m_stretch;
+    std::atomic<float> m_pitch{0.0f}, m_rate{1.0f};
+    std::unique_ptr<Shift> m_shift;  // tape with a pitch: the pitch shifter
+    bool m_shiftChecked = false;
 
     // What the resampler reads: source frames (tape) or stretched ones (spring),
     // interleaved, with a fractional read position into it
@@ -85,6 +103,8 @@ private:
     std::deque<Point> m_points;
 
     double Speed() const;
+    int Generate(PcmSource& source, float* out, int frames);
+    int FillShifted(PcmSource& source, float* out, int frames);
     size_t FifoFrames() const { return m_fifo.size() / 2; }
     bool Supply(PcmSource& source, size_t need, double speed);
     void Resample(float* out, int frames, double step);

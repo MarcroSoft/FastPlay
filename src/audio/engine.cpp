@@ -1329,6 +1329,10 @@ bool Player::IsLive() {
 
 namespace {
 
+// The pitch and rate playing has, for the scrubber to keep (a live stream plays at
+// its own rate, as the processor has it)
+void SetScrubSound(Engine& g, Scrubber& scrub) { scrub.SetSound(g.pitch, g.live ? 1.0f : g.rate); }
+
 // A file's seek made here and now, not waiting for the decode thread (which may be
 // in the middle of reading a CD, say): backward, where nothing is read until the
 // first chunk, or forward into what was decoded lately. False if the decoder
@@ -1428,6 +1432,7 @@ bool Player::StartScrub(ScrubStyle style, int direction, float speed) {
     }
     double from = Position();
     auto scrub = std::make_unique<Scrubber>(style, direction, speed, g.sourceRate, g.outputRate, from);
+    SetScrubSound(g, *scrub);
     // Backward, the source is read in chunks: longer the faster it goes, so the
     // seeks between them stay few
     int chunk = 0;
@@ -1498,6 +1503,7 @@ bool Player::ReleaseScrub() {
     double from = Position();
     auto scrub = std::make_unique<Scrubber>(ScrubStyle::Tape, direction, top, g.sourceRate, g.outputRate, from,
                                             Scrubber::Begin::WindDown, speed);
+    SetScrubSound(g, *scrub);
     int chunk = 0;
     if (direction < 0) chunk = static_cast<int>(g.sourceRate * std::clamp(speed * 0.125, 0.25, 2.0));
     return Reposition(g, from, std::move(scrub), chunk, floor);
@@ -1551,6 +1557,7 @@ void Player::SetPitch(float semitones) {
     g.pitch = semitones;
     std::lock_guard<std::mutex> mix(g.mixMutex);
     if (g.processor) g.processor->SetPitch(semitones);
+    if (g.scrub) SetScrubSound(g, *g.scrub);
 }
 
 void Player::SetRate(float rate) {
@@ -1558,6 +1565,7 @@ void Player::SetRate(float rate) {
     g.rate = rate;
     std::lock_guard<std::mutex> mix(g.mixMutex);
     if (g.processor && !g.live) g.processor->SetRate(rate);
+    if (g.scrub) SetScrubSound(g, *g.scrub);
 }
 
 void Player::SetGain(float linear) {
