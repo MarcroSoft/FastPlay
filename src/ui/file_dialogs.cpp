@@ -16,8 +16,8 @@
 
 void ShowOpenDialog() {
     wxFileDialog dlg(GetMainWindow(), "Open", "", "",
-        "All Supported|*.mp3;*.mp2;*.mp1;*.wav;*.ogg;*.oga;*.flac;*.m4a;*.m4b;*.m4r;*.mp4;*.wma;*.wmv;*.aac;*.opus;*.spx;*.aiff;*.aif;*.ape;*.wv;*.alac;*.mid;*.midi;*.rmi;*.kar;*.dff;*.dsf;*.cda;*.mod;*.s3m;*.xm;*.it;*.mtm;*.umx;*.669;*.mo3;*.mptm;*.m3u;*.m3u8;*.pls"
-        "|Audio Files|*.mp3;*.mp2;*.mp1;*.wav;*.ogg;*.oga;*.flac;*.m4a;*.m4b;*.m4r;*.mp4;*.wma;*.aac;*.opus;*.spx;*.aiff;*.aif;*.ape;*.wv;*.alac;*.mid;*.midi;*.rmi;*.kar;*.dff;*.dsf;*.cda;*.mod;*.s3m;*.xm;*.it;*.mtm;*.umx;*.669;*.mo3;*.mptm"
+        "All Supported|*.mp3;*.mp2;*.mp1;*.wav;*.ogg;*.oga;*.flac;*.m4a;*.m4b;*.m4r;*.mp4;*.wma;*.wmv;*.aac;*.opus;*.spx;*.aiff;*.aif;*.ape;*.wv;*.alac;*.mid;*.midi;*.rmi;*.kar;*.dff;*.dsf;*.c2;*.cda;*.mod;*.s3m;*.xm;*.it;*.mtm;*.umx;*.669;*.mo3;*.mptm;*.m3u;*.m3u8;*.pls"
+        "|Audio Files|*.mp3;*.mp2;*.mp1;*.wav;*.ogg;*.oga;*.flac;*.m4a;*.m4b;*.m4r;*.mp4;*.wma;*.aac;*.opus;*.spx;*.aiff;*.aif;*.ape;*.wv;*.alac;*.mid;*.midi;*.rmi;*.kar;*.dff;*.dsf;*.c2;*.cda;*.mod;*.s3m;*.xm;*.it;*.mtm;*.umx;*.669;*.mo3;*.mptm"
         "|Video Files|*.wmv;*.mp4"
         "|Playlists|*.m3u;*.m3u8;*.pls"
         "|All Files (*.*)|*.*",

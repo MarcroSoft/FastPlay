@@ -124,6 +124,7 @@ targets:
           - -lavcodec
           - -lswresample
           - -lavutil
+          - -lcodec2
           - -lz
           - -lc++
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

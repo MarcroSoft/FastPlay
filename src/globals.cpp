@@ -95,6 +95,8 @@ const FileAssoc g_fileAssocs[] = {
     {L".ape", L"APE Audio"},
     // ALAC plugin
     {L".alac", L"ALAC Audio"},
+    // Codec 2
+    {L".c2", L"Codec 2 Audio"},
     // MIDI plugin
     {L".mid", L"MIDI Audio"},
     {L".midi", L"MIDI Audio"},

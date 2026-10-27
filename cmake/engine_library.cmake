@@ -131,6 +131,7 @@ if(WIN32)
     target_link_libraries(fastplay_engine PRIVATE
         ${FASTPLAY_FFMPEG_DIR}/lib/avformat.lib ${FASTPLAY_FFMPEG_DIR}/lib/avcodec.lib
         ${FASTPLAY_FFMPEG_DIR}/lib/swresample.lib ${FASTPLAY_FFMPEG_DIR}/lib/avutil.lib
+        ${FASTPLAY_FFMPEG_DIR}/lib/codec2.lib
         ws2_32 secur32 ncrypt crypt32 bcrypt
         user32 shell32 shlwapi advapi32 ole32 oleaut32 uuid winhttp)
     set_target_properties(fastplay_engine PROPERTIES
@@ -155,6 +156,7 @@ elseif(FASTPLAY_IOS)
     target_link_libraries(fastplay_engine PRIVATE
         ${FPE_FFMPEG_LIB}/libavformat.a ${FPE_FFMPEG_LIB}/libavcodec.a
         ${FPE_FFMPEG_LIB}/libswresample.a ${FPE_FFMPEG_LIB}/libavutil.a
+        ${FPE_FFMPEG_LIB}/libcodec2.a
         z "-framework Foundation" "-framework Security" "-framework CoreFoundation" "-framework CoreAudio"
         "-framework AudioToolbox" "-framework AVFoundation" "-framework UIKit")
     set_target_properties(fastplay_engine PROPERTIES
@@ -176,6 +178,7 @@ else()
         target_link_libraries(fastplay_engine PRIVATE
             ${FASTPLAY_FFMPEG_DIR}/lib/libavformat.a ${FASTPLAY_FFMPEG_DIR}/lib/libavcodec.a
             ${FASTPLAY_FFMPEG_DIR}/lib/libswresample.a ${FASTPLAY_FFMPEG_DIR}/lib/libavutil.a
+            ${FASTPLAY_FFMPEG_DIR}/lib/libcodec2.a
             z "-framework Security" "-framework CoreFoundation" "-framework CoreAudio" "-framework AudioToolbox")
         set_target_properties(fastplay_engine PROPERTIES
             INSTALL_NAME_DIR "@rpath"
