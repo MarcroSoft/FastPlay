@@ -916,7 +916,7 @@ const AVInputFormat* FormatForExtension(const std::wstring& path) {
         {L"m4r", "mov"},  {L"mp4", "mov"},   {L"ogg", "ogg"},   {L"oga", "ogg"}, {L"opus", "ogg"},
         {L"wav", "wav"},  {L"wma", "asf"},   {L"aiff", "aiff"}, {L"aif", "aiff"}, {L"ape", "ape"}, {L"c2", "codec2"},
         {L"wv", "wv"},    {L"dsf", "dsf"},   {L"mka", "matroska"}, {L"aac", "aac"}, {L"tta", "tta"},
-        {L"tak", "tak"},  {L"mpc", "mpc8"},  {L"caf", "caf"},   {L"w64", "w64"},
+        {L"tak", "tak"},  {L"mpc", "mpc8"},  {L"caf", "caf"},   {L"w64", "w64"},   {L"spx", "ogg"},
     };
     for (const auto& f : kFormats) {
         if (ext == f.ext) return av_find_input_format(f.format);

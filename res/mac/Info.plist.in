@@ -117,6 +117,21 @@
         </dict>
         <dict>
             <key>UTTypeIdentifier</key>
+            <string>org.xiph.speex</string>
+            <key>UTTypeDescription</key>
+            <string>Speex Audio</string>
+            <key>UTTypeConformsTo</key>
+            <array><string>public.audio</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array><string>spx</string></array>
+                <key>public.mime-type</key>
+                <array><string>audio/speex</string></array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key>
             <string>com.wavpack.wavpack-audio</string>
             <key>UTTypeDescription</key>
             <string>WavPack Audio</string>

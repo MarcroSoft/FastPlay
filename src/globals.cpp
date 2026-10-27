@@ -87,6 +87,8 @@ const FileAssoc g_fileAssocs[] = {
     {L".wmv", L"WMV Video"},
     // Opus plugin
     {L".opus", L"Opus Audio"},
+    // Speex
+    {L".spx", L"Speex Audio"},
     // WavPack plugin
     {L".wv", L"WavPack Audio"},
     // Monkey's Audio plugin
