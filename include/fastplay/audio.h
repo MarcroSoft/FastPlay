@@ -188,8 +188,8 @@ bool ReleaseScrub();
 // The tape stop effect: what is heard slows from normal speed down to a
 // standstill, then the scrub end handler is called (to pause or stop for real,
 // which ends it; played again, it carries on from where the tape stopped). It
-// begins at once, from the audio already buffered. False if nothing is playing,
-// or while scrubbing.
+// begins at once, from the audio already buffered. False if nothing is playing
+// (or it has played to the end), or while scrubbing.
 bool TapeStop();
 // A tape stop is slowing, or has stopped and waits for the pause or stop.
 bool IsTapeStopping();

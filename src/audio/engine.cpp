@@ -1528,6 +1528,8 @@ bool Player::TapeStop() {
     // No seek: the device slows down what is already in the ring, at once
     std::lock_guard<std::mutex> lock(g.ringMutex);
     if (!g.ringReady || g.tapeStop) return false;
+    // Played to the end: nothing is left to slow down
+    if (g.producerEnded && ma_pcm_rb_available_read(&g.ring) == 0) return false;
     g.tapeIn.resize(g.ringFrames * kChannels);
     g.tapeStarted = false;
     g.tapeStandstill = false;
