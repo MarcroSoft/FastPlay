@@ -1,4 +1,5 @@
 0.7.0
+Changing the pitch, tempo or rate while stopped or paused is heard as soon as it plays again. It used to play as much as the buffer holds with the old setting first, even when the file started over.
 FastPlay plays Codec 2 (.c2), the speech codec for amateur radio, from 3200 down to 700 bits per second. The Open dialog shows .c2 files, opening one with Load Folder brings the rest of its folder, the library finds them, and FastPlay can be made their player.
 Speex files (.spx) are among the file types FastPlay lists: the Open dialog shows them, opening one with Load Folder brings the rest of its folder, the library finds them, and FastPlay can be made their player. (It played them already.)
 Scrubbing keeps the pitch and rate you have set. Tape scrubbing runs from the sound as you hear it (at +3 semitones and 4 times the speed, it is 27 semitones up) and winds back down to your pitch; spring scrubbing stays at your pitch. Before, scrubbing dropped to the file's own pitch and jumped back to yours when it ended.
