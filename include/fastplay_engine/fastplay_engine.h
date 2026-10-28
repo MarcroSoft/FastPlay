@@ -222,7 +222,8 @@ FPE_API int fpe_scrub_stop(fpe_player* player);
    back), then FPE_EVENT_SCRUB_ENDED. 0 for spring (use fpe_scrub_stop()). */
 FPE_API int fpe_scrub_release(fpe_player* player);
 /* The tape stop: from normal speed to a standstill, then FPE_EVENT_SCRUB_ENDED
-   (pause or stop for real then). */
+   (pause or stop for real then). 0 if nothing is playing (or it has played to
+   the end). */
 FPE_API int fpe_tape_stop(fpe_player* player);
 /* Calls a tape stop off before the pause or stop: it plays on at normal speed
    from where the tape got to. 0 if none was under way. */
