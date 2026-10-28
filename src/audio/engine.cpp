@@ -1399,6 +1399,15 @@ bool Reposition(Engine& g, double seconds, std::unique_ptr<Scrubber> scrub, int 
     return ok;
 }
 
+// The ring is made ahead with the pitch, tempo and rate as they were. Changed
+// while stopped or paused, it is made again from where playing will go on, so the
+// change is heard from the start and not only once the old ring has played.
+void RemakeAhead(Player& player) {
+    if (!player.IsLoaded() || player.GetState() == State::Playing) return;
+    if (player.IsScrubbing() || player.IsTapeStopping()) return;
+    player.Seek(player.Position());
+}
+
 }  // namespace
 
 bool Player::LiveRange(double& start, double& live) {
@@ -1547,25 +1556,37 @@ void Player::SetScrubEndHandler(std::function<void()> handler) {
 
 void Player::SetTempo(float percent) {
     Engine& g = *m;
+    const bool changed = percent != g.tempo && !g.live;
     g.tempo = percent;
-    std::lock_guard<std::mutex> mix(g.mixMutex);
-    if (g.processor && !g.live) g.processor->SetTempo(percent);
+    {
+        std::lock_guard<std::mutex> mix(g.mixMutex);
+        if (g.processor && !g.live) g.processor->SetTempo(percent);
+    }
+    if (changed) RemakeAhead(*this);
 }
 
 void Player::SetPitch(float semitones) {
     Engine& g = *m;
+    const bool changed = semitones != g.pitch;
     g.pitch = semitones;
-    std::lock_guard<std::mutex> mix(g.mixMutex);
-    if (g.processor) g.processor->SetPitch(semitones);
-    if (g.scrub) SetScrubSound(g, *g.scrub);
+    {
+        std::lock_guard<std::mutex> mix(g.mixMutex);
+        if (g.processor) g.processor->SetPitch(semitones);
+        if (g.scrub) SetScrubSound(g, *g.scrub);
+    }
+    if (changed) RemakeAhead(*this);
 }
 
 void Player::SetRate(float rate) {
     Engine& g = *m;
+    const bool changed = rate != g.rate && !g.live;
     g.rate = rate;
-    std::lock_guard<std::mutex> mix(g.mixMutex);
-    if (g.processor && !g.live) g.processor->SetRate(rate);
-    if (g.scrub) SetScrubSound(g, *g.scrub);
+    {
+        std::lock_guard<std::mutex> mix(g.mixMutex);
+        if (g.processor && !g.live) g.processor->SetRate(rate);
+        if (g.scrub) SetScrubSound(g, *g.scrub);
+    }
+    if (changed) RemakeAhead(*this);
 }
 
 void Player::SetGain(float linear) {
